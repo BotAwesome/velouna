@@ -33,7 +33,7 @@ pub fn releases_page() -> String {
     format!("https://github.com/{REPO}/releases")
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Asset {
     pub name: String,
     pub url: String,
@@ -41,7 +41,7 @@ pub struct Asset {
     pub sha256: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Release {
     pub version: String,
     pub notes: String,
@@ -209,7 +209,48 @@ fn download(asset: &Asset, done: &AtomicU64, total: &AtomicU64, cancel: &AtomicB
     Ok(path)
 }
 
+/// A downloaded update that should survive an app restart.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct Pending {
+    release: Release,
+    path: PathBuf,
+}
+
+fn updates_dir() -> PathBuf {
+    crate::config::cache_dir().join("updates")
+}
+
 impl Updater {
+    /// Android kills and restarts the app when the user allows it to install
+    /// apps: remember the downloaded update so the dialog comes back.
+    pub fn remember_ready(&self) {
+        if let Status::Ready(release, path) = &self.status {
+            if let Ok(s) = serde_json::to_string(&Pending { release: release.clone(), path: path.clone() }) {
+                let _ = std::fs::write(updates_dir().join("pending.json"), s);
+            }
+        }
+    }
+
+    /// At startup: picks up a remembered update (true = show the dialog);
+    /// otherwise clears old downloads.
+    pub fn restore(&mut self) -> bool {
+        let dir = updates_dir();
+        let marker = dir.join("pending.json");
+        let pending: Option<Pending> = std::fs::read_to_string(&marker).ok().and_then(|s| serde_json::from_str(&s).ok());
+        let _ = std::fs::remove_file(&marker);
+        if let Some(p) = pending {
+            let size_ok = std::fs::metadata(&p.path)
+                .map(|m| p.release.asset.as_ref().is_none_or(|a| a.size == 0 || a.size == m.len()))
+                .unwrap_or(false);
+            if newer(&p.release.version, CURRENT) && p.path.starts_with(&dir) && size_ok {
+                self.status = Status::Ready(p.release, p.path);
+                return true;
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+        false
+    }
+
     pub fn busy(&self) -> bool {
         matches!(self.status, Status::Checking | Status::Downloading(_) | Status::Installing(_))
     }
@@ -265,6 +306,13 @@ impl Updater {
                 match code {
                     -1 | 0 => {}
                     3 => self.status = Status::Available(rel.clone()),
+                    // STATUS_FAILURE_CONFLICT: signed with another key (0.1.0
+                    // used the debug key) – only a fresh install helps.
+                    5 => {
+                        self.status = Status::Failed(
+                            t!("Diese Version ist anders signiert und lässt sich nicht über die installierte Version installieren. Deinstalliere Velour und installiere die APK von GitHub neu.").to_string(),
+                        )
+                    }
                     _ => self.status = Status::Failed(if msg.is_empty() { format!("PackageInstaller {code}") } else { msg }),
                 }
             }

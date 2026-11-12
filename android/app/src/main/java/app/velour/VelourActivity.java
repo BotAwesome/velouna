@@ -148,6 +148,23 @@ public class VelourActivity extends NativeActivity {
         installStatus = status;
     }
 
+    /** Velour may install APKs ("install unknown apps" for this app). */
+    public boolean canInstallPackages() {
+        return getPackageManager().canRequestPackageInstalls();
+    }
+
+    /** Opens the system page where the user allows Velour to install apps. */
+    public void openInstallPermission() {
+        runOnUiThread(() -> {
+            try {
+                startActivity(new android.content.Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        android.net.Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                installMessage = String.valueOf(e);
+            }
+        });
+    }
+
     public int getInstallStatus() {
         return installStatus;
     }

@@ -833,5 +833,8 @@
   "Die letzte Suche hat nicht geklappt.": "The last check did not work.",
   "Updates kommen von GitHub.": "Updates come from GitHub.",
   "Die heruntergeladene Datei ist beschädigt (Prüfsumme stimmt nicht).": "The downloaded file is damaged (checksum does not match).",
-  "Der Download ist unvollständig.": "The download is incomplete."
+  "Der Download ist unvollständig.": "The download is incomplete.",
+  "Diese Version ist anders signiert und lässt sich nicht über die installierte Version installieren. Deinstalliere Velour und installiere die APK von GitHub neu.": "This version is signed differently and can't be installed over the one you have. Uninstall Velour and install the APK from GitHub again.",
+  "Damit Velour sich aktualisieren kann, musst du es einmal erlauben: Tippe auf „Erlauben“ und schalte „Apps aus dieser Quelle zulassen“ ein. Danach geht es hier weiter.": "Velour needs your permission once to update itself: tap “Allow” and turn on “Allow from this source”. Then come back here.",
+  "Erlauben": "Allow"
 }

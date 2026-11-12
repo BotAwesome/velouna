@@ -1,5 +1,7 @@
 // The app is a NativeActivity around the Rust library libvelour_android.so,
 // which android/build.ps1 builds with cargo-ndk into src/main/jniLibs.
+import java.util.Properties
+
 plugins {
     id("com.android.application")
 }
@@ -26,11 +28,26 @@ android {
         }
     }
 
+    // Release key: keystore.properties (storeFile, storePassword, keyAlias,
+    // keyPassword) from VELOUR_SIGNING or ~/.velour/signing, never in the
+    // repo. Without it, release builds fall back to the debug key, which
+    // can't update copies installed from GitHub releases.
+    val signingProps = (System.getenv("VELOUR_SIGNING")?.let { file(it) }
+        ?: file("${System.getProperty("user.home")}/.velour/signing/keystore.properties"))
+    if (signingProps.isFile) {
+        val p = Properties().apply { signingProps.inputStream().use { load(it) } }
+        signingConfigs.create("velour") {
+            storeFile = file(p.getProperty("storeFile"))
+            storePassword = p.getProperty("storePassword")
+            keyAlias = p.getProperty("keyAlias")
+            keyPassword = p.getProperty("keyPassword")
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
-            // Until a release key exists, release builds use the debug key.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("velour") ?: signingConfigs.getByName("debug")
         }
     }
 

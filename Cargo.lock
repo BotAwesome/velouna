@@ -3182,7 +3182,7 @@ dependencies = [
 
 [[package]]
 name = "velour"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "android_logger",
  "arboard",
@@ -3228,7 +3228,7 @@ version = "0.1.0"
 
 [[package]]
 name = "velour-setup"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "dirs",
  "eframe",

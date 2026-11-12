@@ -3,6 +3,18 @@
 All notable changes to Velour. The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.1.1] - 2026-11-12
+
+### Android
+- The app is now signed with its own release key. If you installed 0.1.0, uninstall it once and
+  install this APK; later updates install from within the app again
+- Updates ask for the "install unknown apps" permission inside Velour and continue right where
+  they were after Android restarts the app
+- The queue scrolls with a swipe; reorder items with the grip on the right, tap to play
+
+### Playback
+- IPTV lists: channel names no longer show parts of the user agent (e.g. "like Gecko) Chrome/…")
+
 ## [0.1.0] - 2026-11-12
 
 First public release for Windows and Android.

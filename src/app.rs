@@ -422,6 +422,9 @@ impl App {
         } else if let Some(notes) = whats_new {
             app.dialog = Some(Dialog::WhatsNew(notes));
         }
+        if app.update.restore() {
+            app.update.prompt = true;
+        }
         if app.data.settings.always_on_top {
             ctx.send_viewport_cmd(ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
         }
@@ -438,7 +441,7 @@ impl App {
             self.update.auto_done = true;
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
             let s = &self.data.settings;
-            if s.update_auto && now.saturating_sub(s.update_last_check) > 20 * 3600 {
+            if s.update_auto && now.saturating_sub(s.update_last_check) > 20 * 3600 && matches!(self.update.status, Status::Idle) {
                 self.data.settings.update_last_check = now;
                 self.mark_dirty();
                 self.update.check(ctx, false);

@@ -176,6 +176,33 @@ impl App {
                 });
             }
             Status::Ready(..) => {
+                // Android: Velour needs "install unknown apps" once; ask for it
+                // here instead of letting the system dialog block the install.
+                #[cfg(target_os = "android")]
+                let allowed = crate::platform::android::can_install_packages();
+                #[cfg(not(target_os = "android"))]
+                let allowed = true;
+                if !allowed {
+                    ui.label(
+                        RichText::new(t!("Damit Velour sich aktualisieren kann, musst du es einmal erlauben: Tippe auf „Erlauben“ und schalte „Apps aus dieser Quelle zulassen“ ein. Danach geht es hier weiter."))
+                            .size(12.5)
+                            .color(t.text_dim),
+                    );
+                    ui.add_space(8.0);
+                    ui.horizontal(|ui| {
+                        if widgets::accent_button(ui, t, t!("Erlauben")).clicked() {
+                            self.update.remember_ready();
+                            #[cfg(target_os = "android")]
+                            crate::platform::android::open_install_permission();
+                        }
+                        if widgets::ghost_button(ui, t, t!("Später")).clicked() {
+                            self.dialog = None;
+                        }
+                    });
+                    // Picks the change up when the user comes back.
+                    ctx.request_repaint_after(std::time::Duration::from_millis(500));
+                    return;
+                }
                 let (label, info) = if crate::platform::MOBILE {
                     (t!("Installieren"), t!("Android fragt gleich nach, ob Velour aktualisiert werden darf."))
                 } else {

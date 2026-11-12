@@ -53,6 +53,16 @@ if (-not $SkipBuild) {
 }
 foreach ($f in $setup, $apk) {
     if (-not (Test-Path $f)) { throw "missing $f" }
+}
+# The APK must carry the release key: a debug-signed one can't update
+# installed copies (see android/app/build.gradle.kts).
+$bt = Get-ChildItem "$(if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "$env:LOCALAPPDATA\Android\Sdk" })\build-tools" -Directory | Sort-Object { [version]($_.Name -replace '-.*') } | Select-Object -Last 1
+$cert = & (Join-Path $bt.FullName "apksigner.bat") verify --print-certs $apk 2>$null | Out-String
+if ($LASTEXITCODE -ne 0) { throw "apksigner could not verify $apk" }
+if ($cert -match "CN=Android Debug") { throw "The APK is signed with the debug key: put the release key into ~/.velour/signing (or set VELOUR_SIGNING)." }
+$certSha = [regex]::Match($cert, "SHA-256 digest: ([0-9a-f]+)").Groups[1].Value
+Write-Host "APK signer: $([regex]::Match($cert, 'DN: (.+)').Groups[1].Value.Trim())  sha256 $certSha"
+foreach ($f in $setup, $apk) {
     "{0}  {1:N1} MB  sha256 {2}" -f (Split-Path $f -Leaf), ((Get-Item $f).Length / 1MB), (Get-FileHash $f -Algorithm SHA256).Hash.ToLower()
 }
 Write-Host "`nRelease notes:" -ForegroundColor Cyan

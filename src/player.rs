@@ -60,11 +60,32 @@ impl PlaylistEntry {
             return t;
         }
         if let Some(t) = &self.title {
+            let t = clean_title(t);
             if !t.is_empty() {
-                return t.clone();
+                return t.to_string();
             }
         }
         crate::media::display_name(&self.filename)
+    }
+}
+
+/// mpv takes an `#EXTINF` title from the first comma on, so a quoted
+/// attribute that contains commas (IPTV lists: `http-user-agent="… (KHTML,
+/// like Gecko) …",Name`) leaks into it. The real name follows the last `",`.
+fn clean_title(t: &str) -> &str {
+    match t.rfind("\",") {
+        Some(i) => t[i + 2..].trim(),
+        None => t.trim(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn extinf_titles() {
+        let t = " like Gecko) Chrome/149.0.0.0 Safari/537.36\",1+1 International (720p)";
+        assert_eq!(super::clean_title(t), "1+1 International (720p)");
+        assert_eq!(super::clean_title("Plain, with comma"), "Plain, with comma");
     }
 }
 

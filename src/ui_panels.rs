@@ -910,13 +910,20 @@ impl App {
                 ui.add_space(ui.available_height().max(0.0));
                 return;
             }
-            let row_h = 40.0;
+            // Touch: a swipe on a row scrolls the list; rows move only by
+            // their grip on the right, a tap plays, a long press opens the menu.
+            let touch = crate::mobile::touch();
+            let row_h = if touch { 48.0 } else { 40.0 };
             egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 for i in range {
                     let e = &st.playlist[i];
                     let w = ui.available_width();
-                    let (rect, resp) = ui.allocate_exact_size(vec2(w, row_h), Sense::click_and_drag());
+                    let (rect, resp) = ui.allocate_exact_size(vec2(w, row_h), if touch { Sense::click() } else { Sense::click_and_drag() });
+                    let grip = touch.then(|| {
+                        let gr = Rect::from_min_max(pos2(rect.right() - 44.0, rect.top()), rect.max);
+                        (gr, ui.interact(gr, Id::new(("qgrip", i)), Sense::drag()))
+                    });
                     let current = e.current || i as i64 == st.playlist_pos;
                     let painter = ui.painter();
                     if current {
@@ -937,7 +944,7 @@ impl App {
                         .map(|p| p.duration)
                         .or_else(|| crate::plex::remote(&e.filename).map(|r| r.duration))
                         .unwrap_or(0.0);
-                    let right_w = if resp.hovered() { 34.0 } else { 52.0 };
+                    let right_w = if touch { 96.0 } else if resp.hovered() { 34.0 } else { 52.0 };
                     widgets::painter_text_trunc(
                         painter,
                         pos2(rect.left() + 34.0, rect.center().y - 9.0),
@@ -946,7 +953,13 @@ impl App {
                         if current { t.accent } else { t.text },
                         w - 34.0 - right_w - 6.0,
                     );
-                    if resp.hovered() {
+                    if let Some((gr, g)) = &grip {
+                        let active = g.dragged() || g.hovered();
+                        ui.painter().text(gr.center(), Align2::CENTER_CENTER, ph::DOTS_SIX_VERTICAL, theme::icon(18.0), if active { t.accent } else { t.text_faint });
+                        if dur > 0.0 {
+                            ui.painter().text(pos2(gr.left() - 4.0, rect.center().y), Align2::RIGHT_CENTER, media::fmt_time_short(dur), FontId::proportional(11.5), t.text_faint);
+                        }
+                    } else if resp.hovered() {
                         let xr = Rect::from_center_size(pos2(rect.right() - 18.0, rect.center().y), vec2(24.0, 24.0));
                         let xresp = ui.interact(xr, Id::new(("qx", i)), Sense::click());
                         ui.painter().text(xr.center(), Align2::CENTER_CENTER, ph::X, theme::icon(14.0), if xresp.hovered() { t.danger } else { t.text_dim });
@@ -960,7 +973,10 @@ impl App {
                         let f = e.filename.clone();
                         self.tools.request_probe(&f);
                     }
-                    resp.dnd_set_drag_payload(i);
+                    match &grip {
+                        Some((_, g)) => g.dnd_set_drag_payload(i),
+                        None => resp.dnd_set_drag_payload(i),
+                    }
                     if let Some(from) = resp.dnd_hover_payload::<usize>() {
                         if *from != i {
                             let y = if *from < i { rect.bottom() } else { rect.top() };
@@ -973,7 +989,7 @@ impl App {
                             move_op = Some((*from, to));
                         }
                     }
-                    if resp.double_clicked() {
+                    if if touch { resp.clicked() } else { resp.double_clicked() } {
                         play_idx = Some(i);
                     }
                     resp.context_menu(|ui| {

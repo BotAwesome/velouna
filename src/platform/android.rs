@@ -153,6 +153,19 @@ pub fn install_apk(path: &str) {
     });
 }
 
+/// The user allowed Velour to install apps (needed for updates).
+pub fn can_install_packages() -> bool {
+    with_activity(|env, activity| env.call_method(activity, "canInstallPackages", "()Z", &[])?.z()).unwrap_or(true)
+}
+
+/// Opens Android's "install unknown apps" page for Velour.
+pub fn open_install_permission() {
+    with_activity(|env, activity| {
+        env.call_method(activity, "openInstallPermission", "()V", &[])?;
+        Ok(())
+    });
+}
+
 /// Install result: (-1 running, 0 success, else PackageInstaller status; message).
 pub fn install_status() -> Option<(i32, String)> {
     with_activity(|env, activity| {
