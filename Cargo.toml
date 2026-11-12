@@ -1,0 +1,50 @@
+[package]
+name = "velour"
+version = "0.1.0"
+edition = "2024"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/BotAwesome/velour"
+
+[lib]
+name = "velour"
+path = "src/lib.rs"
+
+[[bin]]
+name = "velour"
+path = "src/main.rs"
+
+[workspace]
+members = [".", "i18n-macros", "setup", "android/velour-android"]
+# The Android library is built with cargo-ndk (android/build.ps1), not on the host.
+default-members = [".", "i18n-macros", "setup"]
+
+[dependencies]
+dirs = "7.0.0"
+eframe = { version = "0.32", default-features = false, features = ["default_fonts", "glow"] }
+egui-phosphor = { version = "0.10", features = ["regular", "fill"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+libloading = "0.8"
+log = "0.4"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+sha2 = "0.10"
+sys-locale = "0.3"
+velour-i18n-macros = { path = "i18n-macros" }
+ureq = { version = "2", features = ["json"] }
+
+[target.'cfg(not(target_os = "android"))'.dependencies]
+arboard = "3"
+eframe = { version = "0.32", default-features = false, features = ["accesskit"] }
+keyring = { version = "3", features = ["windows-native"] }
+raw-window-handle = "0.6"
+rfd = "0.15"
+
+[target.'cfg(target_os = "android")'.dependencies]
+android_logger = "0.14"
+eframe = { version = "0.32", default-features = false, features = ["android-native-activity"] }
+jni = "0.21"
+velour-rfd-shim = { path = "android/shims/rfd" }
+winit = "0.30"
+
+[build-dependencies]
+winresource = "0.1"

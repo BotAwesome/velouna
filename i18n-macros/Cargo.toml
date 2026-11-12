@@ -1,0 +1,11 @@
+[package]
+name = "velour-i18n-macros"
+version = "0.1.0"
+edition = "2024"
+description = "Compile-time checked German/English UI strings for Velour"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+serde_json = "1"

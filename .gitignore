@@ -1,0 +1,7 @@
+/target
+/lib/*.dll
+*.mp4
+
+/installer/stage
+/dist
+transscript.txt

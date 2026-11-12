@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The Velour V (same geometry as src/logo.rs, in its 96-unit grid),
+     scaled into the adaptive-icon safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group android:translateX="18" android:translateY="19" android:scaleX="0.75" android:scaleY="0.75">
+        <path android:fillColor="#D83F5C" android:pathData="M84,14 Q69,52 50,82 L46,82 Q57,47 65,14 Z" />
+        <path android:fillColor="#D83F5C" android:pathData="M12,14 Q27,52 46,82 L50,82 Q39,47 31,14 Z" />
+        <path android:strokeColor="#A02F44" android:strokeWidth="2.2" android:pathData="M75,15 Q64,48 49,80" />
+        <path android:strokeColor="#A02F44" android:strokeWidth="2.2" android:pathData="M21,15 Q32,48 47,80" />
+    </group>
+</vector>
