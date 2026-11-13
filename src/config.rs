@@ -20,6 +20,17 @@ pub enum ThemeMode {
     System,
 }
 
+/// What happens to a local file that is gone (moved or deleted) when it
+/// should play: asked once, then the answer applies every time.
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum MissingMedia {
+    #[default]
+    Ask,
+    /// Out of history, playlists and pins.
+    Remove,
+    Keep,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ResumeMode {
     #[default]
@@ -346,6 +357,7 @@ pub struct Settings {
     pub music_folders: Vec<PathBuf>,
     pub scan_on_start: bool,
     pub show_hidden: bool,
+    pub missing_media: MissingMedia,
     // Plex
     pub plex_sync_progress: bool,
     pub plex_on_home: bool,
@@ -370,11 +382,36 @@ pub struct Settings {
     pub sidebar_width: f32,
 }
 
+/// A folder in Android's shared storage (Movies, Music, Download, …).
+#[cfg(target_os = "android")]
+pub fn android_storage(name: &str) -> PathBuf {
+    PathBuf::from("/storage/emulated/0").join(name)
+}
+
+/// Phones keep videos in Download too (browser, messengers).
+fn default_video_folders(videos: &std::path::Path) -> Vec<PathBuf> {
+    #[cfg(target_os = "android")]
+    {
+        vec![videos.to_path_buf(), android_storage("Download")]
+    }
+    #[cfg(not(target_os = "android"))]
+    {
+        vec![videos.to_path_buf()]
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
-        let videos = dirs::video_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default());
-        let music = dirs::audio_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default());
-        let pictures = dirs::picture_dir().unwrap_or_else(|| videos.clone());
+        #[cfg(not(target_os = "android"))]
+        let (videos, music, pictures) = {
+            let videos = dirs::video_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default());
+            let music = dirs::audio_dir().unwrap_or_else(|| dirs::home_dir().unwrap_or_default());
+            let pictures = dirs::picture_dir().unwrap_or_else(|| videos.clone());
+            (videos, music, pictures)
+        };
+        // Android has no XDG folders: the shared storage's standard ones.
+        #[cfg(target_os = "android")]
+        let (videos, music, pictures) = (android_storage("Movies"), android_storage("Music"), android_storage("Pictures"));
         Self {
             theme: ThemeMode::Dark,
             accent: [0xD8, 0x3F, 0x5C],
@@ -439,10 +476,11 @@ impl Default for Settings {
             sub_pos: 100.0,
             sub_size_pixels: false,
             osd_font_size: 32.0,
-            video_folders: vec![videos.clone()],
+            video_folders: default_video_folders(&videos),
             music_folders: vec![music],
             scan_on_start: true,
             show_hidden: false,
+            missing_media: MissingMedia::Ask,
             plex_sync_progress: true,
             plex_on_home: true,
             plex_local_only: false,
@@ -528,17 +566,26 @@ pub struct HistoryEntry {
     pub last_played: u64,
     pub finished: bool,
     pub audio_only: bool,
+    /// A TV channel or radio station: no position, never "watched".
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub live: bool,
+    /// Channel / station logo (live entries).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub logo: Option<String>,
 }
 
 impl HistoryEntry {
     pub fn progress(&self) -> f32 {
+        if self.live {
+            return 0.0;
+        }
         if self.finished {
             return 1.0;
         }
         if self.duration > 0.0 { (self.position / self.duration).clamp(0.0, 1.0) as f32 } else { 0.0 }
     }
     pub fn resumable(&self) -> bool {
-        !self.finished && self.position > 10.0 && (self.duration <= 0.0 || self.position < self.duration - 15.0)
+        !self.live && !self.finished && self.position > 10.0 && (self.duration <= 0.0 || self.position < self.duration - 15.0)
     }
 }
 
@@ -627,6 +674,9 @@ pub struct Data {
     pub radio_favorites: Vec<RadioFavorite>,
     /// The radio tile replaced the old SomaFM example stream.
     pub radio_added: bool,
+    /// Played files that are gone and were kept: reported once only.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub missing_seen: Vec<String>,
 }
 
 /// Persistent Plex identity. The token itself lives in the Windows credential store.
@@ -694,6 +744,24 @@ impl Data {
         let s = &mut d.settings;
         if s.screenshot_dir.file_name().is_some_and(|n| n == LEGACY_DIR) {
             s.screenshot_dir = s.screenshot_dir.with_file_name("Velour");
+        }
+        // Android builds before 0.1.3 had no real default folders (home
+        // folder fallback): use the shared storage's ones.
+        #[cfg(target_os = "android")]
+        {
+            let on_storage = |p: &std::path::PathBuf| p.starts_with("/storage") || p.starts_with("/sdcard");
+            for (list, def) in [(&mut s.video_folders, default_video_folders(&android_storage("Movies"))), (&mut s.music_folders, vec![android_storage("Music")])] {
+                list.retain(|p| on_storage(p));
+                if list.is_empty() {
+                    *list = def;
+                }
+            }
+            if !on_storage(&s.screenshot_dir) {
+                s.screenshot_dir = android_storage("Pictures").join("Velour");
+            }
+            if !on_storage(&s.record_dir) {
+                s.record_dir = android_storage("Movies").join("Velour");
+            }
         }
         // The old default accent was VLC-like orange; Velour's is velvet red.
         if s.accent == [0xF0, 0x86, 0x00] {

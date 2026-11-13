@@ -865,10 +865,7 @@ impl App {
                 self.dialog_add_to_queue();
             }
             if icon_button(ui, &t, ph::FOLDER_PLUS, t!("Ordner hinzufügen"), false).clicked() {
-                if let Some(d) = rfd::FileDialog::new().pick_folder() {
-                    let files: Vec<String> = media::list_dir(&d, false).1.into_iter().map(|x| x.to_string_lossy().to_string()).collect();
-                    self.enqueue(&files);
-                }
+                self.pick(crate::pick::Pick::QueueFolder);
             }
             if icon_button(ui, &t, ph::SHUFFLE, t!("Mischen"), false).clicked() {
                 c.playlist_shuffle();
@@ -1005,7 +1002,7 @@ impl App {
                             save_one = Some(e.filename.clone());
                             ui.close();
                         }
-                        if !media::is_url(&e.filename) && widgets::menu_item(ui, &t, ph::FOLDER_OPEN, t!("Im Explorer anzeigen"), "", false).clicked() {
+                        if !crate::platform::MOBILE && !media::is_url(&e.filename) && widgets::menu_item(ui, &t, ph::FOLDER_OPEN, t!("Im Explorer anzeigen"), "", false).clicked() {
                             show_in_explorer(&e.filename);
                             ui.close();
                         }

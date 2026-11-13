@@ -344,6 +344,17 @@ fn link(ui: &mut Ui, t: &Theme, text: &str) -> egui::Response {
 }
 
 /// The same movie often lives in several libraries (HD, 4K, 3D …): show it once.
+/// What to continue: Plex's "On Deck" ("Aktuell": started items and the
+/// next episode of a show being watched, most recent first), then
+/// "Continue Watching" (started items only) for anything On Deck misses.
+/// Only the second one left out the next episode after finishing one.
+fn continue_items(hubs: &[Hub]) -> Vec<Item> {
+    let on_deck = |h: &Hub| h.identifier.contains("ondeck") || h.identifier.contains("onDeck");
+    let mut all: Vec<Item> = hubs.iter().filter(|h| on_deck(h)).flat_map(|h| h.items.iter().cloned()).collect();
+    all.extend(hubs.iter().filter(|h| h.identifier.contains("continue")).flat_map(|h| h.items.iter().cloned()));
+    dedup(&all)
+}
+
 fn dedup(items: &[Item]) -> Vec<Item> {
     let mut seen = HashSet::new();
     items
@@ -1011,7 +1022,8 @@ impl App {
                 }
                 if self.plex.token_store_failed {
                     ui.add_space(14.0);
-                    ui.label(RichText::new(t!("Hinweis: Die Anmeldung konnte nicht im Windows-Anmeldespeicher gesichert werden und gilt nur bis zum Beenden.")).size(12.0).color(t.text_faint));
+                    let note = if crate::platform::MOBILE { t!("Hinweis: Die Anmeldung konnte nicht gespeichert werden und gilt nur bis zum Beenden.") } else { t!("Hinweis: Die Anmeldung konnte nicht im Windows-Anmeldespeicher gesichert werden und gilt nur bis zum Beenden.") };
+                    ui.label(RichText::new(note).size(12.0).color(t.text_faint));
                 }
             });
         });
@@ -1027,7 +1039,7 @@ impl App {
             St::Failed(e) => return self.plex_error(ui, &e, None),
         };
         let is_continue = |h: &Hub| h.identifier.contains("continue") || h.identifier.contains("ondeck") || h.identifier.contains("onDeck");
-        let continue_items: Vec<Item> = hubs.iter().find(|h| is_continue(h)).map(|h| dedup(&h.items)).unwrap_or_default();
+        let continue_items: Vec<Item> = continue_items(&hubs);
 
         // Side layout: what to continue lives in a column on the left, the
         // shelves scroll on the right – the first screen shows far more.
@@ -2275,10 +2287,13 @@ impl App {
             return;
         }
         let St::Ready(hubs) = self.plex.hubs("/hubs?count=16&includeLibraryPlaylists=0") else { return };
-        let Some(h) = hubs.iter().find(|h| h.identifier.contains("continue") || h.identifier.contains("ondeck") || h.identifier.contains("onDeck")).cloned() else { return };
+        let items = continue_items(&hubs);
+        if items.is_empty() {
+            return;
+        }
         let mut acts = Vec::new();
         let name = self.plex.server.as_ref().map(|s| s.name.clone()).unwrap_or_else(|| "Plex".into());
-        self.shelf(ui, "vlb-home-plex", &tf!("Weiterschauen auf {name}"), &h.items, Some(LibLoc::Plex(PlexLoc::Home)), &mut acts, false);
+        self.shelf(ui, "vlb-home-plex", &tf!("Weiterschauen auf {name}"), &items, Some(LibLoc::Plex(PlexLoc::Home)), &mut acts, false);
         self.plex_handle(acts, None);
     }
 

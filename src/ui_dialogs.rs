@@ -2,12 +2,13 @@
 //! add subtitles, playlists, presets, about, errors.
 
 use crate::app::{App, CONVERT_PROFILES, Dialog, SettingsPage, SubScope};
-use crate::config::{Language, 
+use crate::config::{Language, MissingMedia, 
     self, ControlItem, ControlLayout, FullscreenControls, Playlist, RepeatMode, ResumeMode, Settings, Stream, SubAuto, ThemeMode,
     WheelAction,
 };
 use crate::hotkeys::{self, ACTIONS, Bindings, Combo};
 use crate::media;
+use crate::pick::Pick;
 use crate::theme::{self, ACCENTS};
 use crate::widgets::{self, icon_button};
 use eframe::egui::{
@@ -51,6 +52,12 @@ fn item_icon(i: ControlItem) -> &'static str {
         ControlItem::FrameStep => ph::CARET_LINE_RIGHT,
         ControlItem::Record => ph::RECORD,
     }
+}
+
+/// Pages that mean something on this device: phones have no mouse or
+/// keyboard settings (the double-tap step is part of the touch layout).
+fn page_shown(p: SettingsPage) -> bool {
+    !(crate::platform::MOBILE && p == SettingsPage::Controls)
 }
 
 const PAGES: &[(SettingsPage, &str, &str, &str)] = &[
@@ -165,6 +172,7 @@ impl App {
             Dialog::Update => self.dlg_update(ui),
             Dialog::WhatsNew(notes) => self.dlg_whats_new(ui, notes.clone()),
             Dialog::TvGuide { title, country, keys } => self.dlg_tv_guide(ui, title, country, keys),
+            Dialog::MissingMedia(list) => self.dlg_missing_media(ui, list.clone()),
         });
         let blocking = matches!(d, Dialog::Onboarding(_)) || self.rebinding.is_some() || matches!(d, Dialog::Convert if self.dlg.convert_progress.is_some());
         if resp.should_close() && !blocking && self.dialog == Some(d) {
@@ -270,7 +278,7 @@ impl App {
             ui.add_space(8.0);
             egui::ScrollArea::vertical().id_salt("set_nav").show(ui, |ui| {
                 let mut group = "";
-                for (p, icon, label, g) in PAGES {
+                for (p, icon, label, g) in PAGES.iter().filter(|x| page_shown(x.0)) {
                     if *g != group {
                         group = g;
                         ui.add_space(6.0);
@@ -321,7 +329,7 @@ impl App {
         if filter.is_empty() {
             self.settings_page_ui(ui, page, &mut s, &mut rows);
         } else {
-            for (p, _, label, _) in PAGES {
+            for (p, _, label, _) in PAGES.iter().filter(|x| page_shown(x.0)) {
                 let before = rows.shown;
                 ui.scope(|ui| self.settings_page_ui(ui, *p, &mut s, &mut rows));
                 if rows.shown > before {
@@ -413,7 +421,7 @@ impl App {
                             return;
                         }
                         let mut group = "";
-                        for (p, icon, label, g) in PAGES {
+                        for (p, icon, label, g) in PAGES.iter().filter(|x| page_shown(x.0)) {
                             if *g != group {
                                 group = g;
                                 ui.add_space(10.0);
@@ -582,7 +590,7 @@ impl App {
                     }
                 });
                 r.section(ui, t!("Einführung"));
-                r.row(ui, t!("Einführung erneut anzeigen"), t!("Design, Farbe und wichtige Tastenkürzel."), |ui| {
+                r.row(ui, t!("Einführung erneut anzeigen"), if crate::platform::MOBILE { t!("Design, Farbe und Bibliothek.") } else { t!("Design, Farbe und wichtige Tastenkürzel.") }, |ui| {
                     if ui.button(t!("Starten")).clicked() {
                         self.dialog = Some(Dialog::Onboarding(0));
                     }
@@ -877,9 +885,27 @@ impl App {
                 });
             }
             SettingsPage::Library => {
+                if crate::platform::MOBILE {
+                    let st = self.storage;
+                    r.section(ui, t!("Speicherzugriff"));
+                    r.row(ui, t!("Videos und Musik"), t!("Ohne diese Berechtigung bleibt die Bibliothek leer."), |ui| {
+                        if st.media() {
+                            ui.label(RichText::new(t!("erlaubt")).color(t.text_dim));
+                        } else if ui.button(t!("Erlauben…")).clicked() {
+                            crate::pick::request_storage();
+                        }
+                    });
+                    r.row(ui, t!("Zugriff auf alle Dateien"), t!("Nur für Playlists (.m3u) und seltene Untertitelformate neben den Videos – .srt-Untertitel gehen auch ohne. Öffnet die Android-Einstellungen."), |ui| {
+                        if st.all_files {
+                            ui.label(RichText::new(t!("erlaubt")).color(t.text_dim));
+                        } else if ui.button(t!("Einstellungen öffnen…")).clicked() {
+                            crate::pick::request_all_files();
+                        }
+                    });
+                }
                 r.section(ui, t!("Ordner"));
                 if r.filter.is_empty() || t!("videoordner musikordner").contains(&r.filter.to_lowercase()) {
-                    for (label, list) in [(t!("Videoordner"), &mut s.video_folders), (t!("Musikordner"), &mut s.music_folders)] {
+                    for (music, (label, list)) in [(t!("Videoordner"), &mut s.video_folders), (t!("Musikordner"), &mut s.music_folders)].into_iter().enumerate().map(|(i, x)| (i == 1, x)) {
                         ui.label(RichText::new(label).color(t.text_dim));
                         let mut remove = None;
                         for (i, f) in list.iter().enumerate() {
@@ -897,11 +923,9 @@ impl App {
                             list.remove(i);
                         }
                         if ui.button(tf!("{}  Ordner hinzufügen…", ph::PLUS)).clicked() {
-                            if let Some(d) = rfd::FileDialog::new().pick_folder() {
-                                if !list.contains(&d) {
-                                    list.push(d);
-                                }
-                            }
+                            self.pick(Pick::LibraryFolder { music, show: false });
+                            // Desktop answers right away: keep this page's copy in step.
+                            *list = if music { self.data.settings.music_folders.clone() } else { self.data.settings.video_folders.clone() };
                         }
                         ui.add_space(8.0);
                     }
@@ -911,6 +935,9 @@ impl App {
                 });
                 r.row(ui, t!("Versteckte Dateien anzeigen"), "", |ui| {
                     widgets::toggle(ui, &t, &mut s.show_hidden);
+                });
+                r.row(ui, t!("Fehlende Medien"), t!("Abgespielte Dateien, die verschoben oder gelöscht wurden: aus Verlauf, Playlists und Anheftungen entfernen oder behalten."), |ui| {
+                    widgets::segmented(ui, &t, &mut s.missing_media, &[(MissingMedia::Ask, t!("Fragen")), (MissingMedia::Remove, t!("Entfernen")), (MissingMedia::Keep, t!("Behalten"))]);
                 });
             }
             SettingsPage::Plex => {
@@ -1000,9 +1027,12 @@ impl App {
             }
             SettingsPage::Network => {
                 r.section(ui, "Streaming");
-                r.row(ui, t!("yt-dlp für Webseiten verwenden"), t!("Erlaubt das Abspielen von Links zu Videoportalen, wenn yt-dlp installiert ist."), |ui| {
-                    widgets::toggle(ui, &t, &mut s.ytdl);
-                });
+                // Phones have no yt-dlp to call.
+                if !crate::platform::MOBILE {
+                    r.row(ui, t!("yt-dlp für Webseiten verwenden"), t!("Erlaubt das Abspielen von Links zu Videoportalen, wenn yt-dlp installiert ist."), |ui| {
+                        widgets::toggle(ui, &t, &mut s.ytdl);
+                    });
+                }
                 r.row(ui, t!("Puffer (Sekunden)"), "", |ui| {
                     widgets::value_box(ui, &t, &format!("{:.0} s", s.cache_secs), 60.0);
                     widgets::slider(ui, &t, &mut s.cache_secs, 5.0, 600.0, 140.0);
@@ -1027,9 +1057,6 @@ impl App {
                     s.demuxer_max_mb = ((v / 16.0).round() * 16.0) as u32;
                 });
                 r.section(ui, t!("Dekodierung"));
-                r.row(ui, t!("Hardware-Dekodierung"), "", |ui| {
-                    widgets::toggle(ui, &t, &mut s.hwdec);
-                });
                 if let Some(p) = &self.player {
                     let hw = p.st.hwdec.clone();
                     r.row(ui, t!("Aktueller Decoder"), "", |ui| {
@@ -1041,30 +1068,31 @@ impl App {
                 r.section(ui, "Screenshots");
                 r.row(ui, t!("Screenshot-Ordner"), "", |ui| {
                     if ui.button(t!("Ändern…")).clicked() {
-                        if let Some(d) = rfd::FileDialog::new().pick_folder() {
-                            s.screenshot_dir = d;
-                        }
+                        self.pick(Pick::ScreenshotDir);
+                        s.screenshot_dir = self.data.settings.screenshot_dir.clone();
                     }
                     ui.label(RichText::new(s.screenshot_dir.to_string_lossy()).size(12.0).color(t.text_dim));
                 });
                 r.row(ui, "Format", "", |ui| {
                     egui::ComboBox::from_id_salt("shot_fmt").selected_text(s.screenshot_format.to_uppercase()).show_ui(ui, |ui| { for f in ["png", "jpg", "webp"] { ui.selectable_value(&mut s.screenshot_format, f.to_string(), f.to_uppercase()); } });
                 });
-                r.section(ui, t!("Aufnahmen"));
-                r.row(ui, t!("Aufnahme-Ordner"), t!("Ziel für „Stream aufnehmen“."), |ui| {
-                    if ui.button(t!("Ändern…")).clicked() {
-                        if let Some(d) = rfd::FileDialog::new().pick_folder() {
-                            s.record_dir = d;
+                // Phones have no record button and no FFmpeg to convert with.
+                if !crate::platform::MOBILE {
+                    r.section(ui, t!("Aufnahmen"));
+                    r.row(ui, t!("Aufnahme-Ordner"), t!("Ziel für „Stream aufnehmen“."), |ui| {
+                        if ui.button(t!("Ändern…")).clicked() {
+                            self.pick(Pick::RecordDir);
+                            s.record_dir = self.data.settings.record_dir.clone();
                         }
-                    }
-                    ui.label(RichText::new(s.record_dir.to_string_lossy()).size(12.0).color(t.text_dim));
-                });
-                r.row(ui, t!("Konvertieren / Speichern"), t!("Dateien in andere Formate umwandeln."), |ui| {
-                    if ui.button(t!("Öffnen…")).clicked() {
-                        self.dlg.convert_in = self.current_path();
-                        self.dialog = Some(Dialog::Convert);
-                    }
-                });
+                        ui.label(RichText::new(s.record_dir.to_string_lossy()).size(12.0).color(t.text_dim));
+                    });
+                    r.row(ui, t!("Konvertieren / Speichern"), t!("Dateien in andere Formate umwandeln."), |ui| {
+                        if ui.button(t!("Öffnen…")).clicked() {
+                            self.dlg.convert_in = self.current_path();
+                            self.dialog = Some(Dialog::Convert);
+                        }
+                    });
+                }
             }
             SettingsPage::Extensions => {
                 r.section(ui, t!("Komponenten"));
@@ -1082,22 +1110,25 @@ impl App {
                         }
                     }
                 });
-                // Bundled next to velour.exe (installer) or found on PATH; the full
-                // path is in the tooltip.
-                let describe = |p: &std::path::PathBuf| {
-                    let bundled = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())).is_some_and(|d| p.parent() == Some(d.as_path()));
-                    if bundled { t!("mitgeliefert").to_string() } else { t!("aus PATH").to_string() }
-                };
-                let ff_path = self.tools.ffmpeg.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-                let fp_path = self.tools.ffprobe.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
-                let ff = self.tools.ffmpeg.as_ref().map(describe);
-                r.row(ui, t!("FFmpeg (Vorschaubilder, Wellenform, Konvertieren)"), "", |ui| {
-                    ui.label(RichText::new(ff.clone().unwrap_or(t!("nicht gefunden").into())).size(12.0).color(if ff.is_some() { t.text_dim } else { t.danger })).on_hover_text(&ff_path);
-                });
-                let fp = self.tools.ffprobe.as_ref().map(describe);
-                r.row(ui, t!("FFprobe (Metadaten)"), "", |ui| {
-                    ui.label(RichText::new(fp.clone().unwrap_or(t!("nicht gefunden").into())).size(12.0).color(if fp.is_some() { t.text_dim } else { t.danger })).on_hover_text(&fp_path);
-                });
+                // Phones have no FFmpeg programs (thumbnails come from mpv there).
+                if !crate::platform::MOBILE {
+                    // Bundled next to velour.exe (installer) or found on PATH; the full
+                    // path is in the tooltip.
+                    let describe = |p: &std::path::PathBuf| {
+                        let bundled = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())).is_some_and(|d| p.parent() == Some(d.as_path()));
+                        if bundled { t!("mitgeliefert").to_string() } else { t!("aus PATH").to_string() }
+                    };
+                    let ff_path = self.tools.ffmpeg.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                    let fp_path = self.tools.ffprobe.as_ref().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
+                    let ff = self.tools.ffmpeg.as_ref().map(describe);
+                    r.row(ui, t!("FFmpeg (Vorschaubilder, Wellenform, Konvertieren)"), "", |ui| {
+                        ui.label(RichText::new(ff.clone().unwrap_or(t!("nicht gefunden").into())).size(12.0).color(if ff.is_some() { t.text_dim } else { t.danger })).on_hover_text(&ff_path);
+                    });
+                    let fp = self.tools.ffprobe.as_ref().map(describe);
+                    r.row(ui, t!("FFprobe (Metadaten)"), "", |ui| {
+                        ui.label(RichText::new(fp.clone().unwrap_or(t!("nicht gefunden").into())).size(12.0).color(if fp.is_some() { t.text_dim } else { t.danger })).on_hover_text(&fp_path);
+                    });
+                }
                 if r.filter.is_empty() {
                     ui.add_space(10.0);
                     ui.label(
@@ -1576,7 +1607,7 @@ impl App {
         let mut pick_local = false;
         let mut online = false;
         ui.horizontal(|ui| {
-            if widgets::icon_text_button(ui, &t, ph::HARD_DRIVES, t!("Von diesem Computer…")).clicked() {
+            if widgets::icon_text_button(ui, &t, ph::HARD_DRIVES, if crate::platform::MOBILE { t!("Vom Gerät…") } else { t!("Von diesem Computer…") }).clicked() {
                 pick_local = true;
             }
             if widgets::icon_text_button(ui, &t, ph::GLOBE, t!("Online suchen (OpenSubtitles)")).clicked() {
@@ -1601,38 +1632,7 @@ impl App {
             ui.ctx().open_url(egui::OpenUrl::new_tab(url));
         }
         if pick_local {
-            let mut d = rfd::FileDialog::new().add_filter(t!("Untertitel"), media::SUB_EXT).add_filter(t!("Alle Dateien"), &["*"]);
-            if let Some(f) = &folder {
-                d = d.set_directory(f);
-            }
-            match scope {
-                SubScope::File => {
-                    if let Some(f) = d.pick_file() {
-                        let s = f.to_string_lossy().to_string();
-                        let cur = self.current_path();
-                        if let Some(p) = &self.player {
-                            p.sub_add(&s, true);
-                        }
-                        self.data.sub_map.insert(cur, s.clone());
-                        self.mark_dirty();
-                        self.osd(tf!("Untertitel geladen: {}", media::display_name(&s)));
-                        self.dialog = None;
-                    }
-                }
-                SubScope::Folder | SubScope::Queue => {
-                    if let Some(files) = d.pick_files() {
-                        let subs: Vec<String> = files.iter().map(|f| f.to_string_lossy().to_string()).collect();
-                        let videos: Vec<String> = if scope == SubScope::Folder {
-                            folder.as_ref().map(|f| media::list_dir(f, false).1.into_iter().map(|p| p.to_string_lossy().to_string()).filter(|p| media::is_video(p)).collect()).unwrap_or_default()
-                        } else {
-                            self.player.as_ref().map(|p| p.st.playlist.iter().map(|e| e.filename.clone()).filter(|f| !media::is_url(f)).collect()).unwrap_or_default()
-                        };
-                        let m = media::match_subtitles(&videos, &subs);
-                        self.dlg.sub_files = subs;
-                        self.dlg.sub_matches = videos.into_iter().zip(m).collect();
-                    }
-                }
-            }
+            self.pick(Pick::SubtitlesFor(scope));
         }
     }
 
@@ -1665,12 +1665,8 @@ impl App {
                 }
             });
         });
-        let mut items = items;
         if pick {
-            if let Some(files) = rfd::FileDialog::new().pick_files() {
-                items.extend(files.into_iter().map(|f| f.to_string_lossy().to_string()));
-                self.dialog = Some(Dialog::NewPlaylist(items.clone()));
-            }
+            self.pick(Pick::PlaylistFiles(items.clone()));
         }
         if create && !self.dlg.playlist_name.trim().is_empty() {
             let name = self.dlg.playlist_name.trim().to_string();
@@ -1743,6 +1739,67 @@ impl App {
     }
 
     // ============================================================= about
+
+    /// Played local files that are gone: remove them or keep them. Asked
+    /// once; the answer becomes the setting for every later case.
+    fn dlg_missing_media(&mut self, ui: &mut Ui, list: Vec<String>) {
+        let t = self.t;
+        dlg_width(ui, 480.0);
+        if self.dlg_title(ui, t!("Medien nicht gefunden")) {
+            return;
+        }
+        let intro = if list.len() == 1 {
+            t!("Diese Datei wurde mit Velour abgespielt, ist aber nicht mehr erreichbar – vielleicht wurde sie verschoben oder gelöscht.").to_string()
+        } else {
+            tf!("{} Dateien wurden mit Velour abgespielt, sind aber nicht mehr erreichbar – vielleicht wurden sie verschoben oder gelöscht.", list.len())
+        };
+        ui.label(RichText::new(intro).color(t.text_dim));
+        ui.add_space(8.0);
+        const SHOWN: usize = 6;
+        for p in list.iter().take(SHOWN) {
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(ph::FILE_X).color(t.danger));
+                ui.add(egui::Label::new(RichText::new(media::display_name(p)).color(t.text)).truncate());
+            });
+        }
+        if list.len() > SHOWN {
+            ui.label(RichText::new(tf!("und {} weitere", list.len() - SHOWN)).color(t.text_faint));
+        }
+        ui.add_space(10.0);
+        ui.label(RichText::new(t!("Aus Verlauf, Playlists und Anheftungen entfernen?")).color(t.text));
+        ui.label(
+            RichText::new(t!("Deine Wahl gilt ab jetzt automatisch. Ändern kannst du sie unter Einstellungen → Bibliothek."))
+                .size(12.0)
+                .color(t.text_faint),
+        );
+        ui.add_space(12.0);
+        let enter = ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let mut choice = None;
+        ui.horizontal(|ui| {
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                if widgets::accent_button(ui, &t, t!("Entfernen")).clicked() || enter {
+                    choice = Some(MissingMedia::Remove);
+                }
+                if widgets::ghost_button(ui, &t, t!("Behalten")).clicked() {
+                    choice = Some(MissingMedia::Keep);
+                }
+            });
+        });
+        let Some(choice) = choice else { return };
+        self.data.settings.missing_media = choice;
+        if choice == MissingMedia::Remove {
+            self.forget_media(&list);
+            self.osd(if list.len() == 1 {
+                tf!("„{}“ entfernt", media::display_name(&list[0]))
+            } else {
+                tf!("{} Medien entfernt", list.len())
+            });
+        } else {
+            self.remember_missing(&list);
+        }
+        self.mark_dirty();
+        self.dialog = None;
+    }
 
     fn dlg_about(&mut self, ui: &mut Ui) {
         let t = self.t;
@@ -1853,7 +1910,8 @@ impl App {
                     ui.painter().rect_filled(Rect::from_min_size(tr.min, vec2(tr.width() * 0.4, tr.height())), CornerRadius::same(3), t.accent_dim);
                     ui.painter().rect_filled(Rect::from_center_size(pos2(tr.left() + tr.width() * 0.4, tr.center().y), vec2(6.0, 18.0)), CornerRadius::same(3), t.accent);
                 });
-                next = Some(1);
+                // Phones have no keyboard shortcuts to show.
+                next = Some(if crate::platform::MOBILE { 2 } else { 1 });
             }
             1 => {
                 ui.label(RichText::new(t!("Die wichtigsten Tastenkürzel")).font(theme::semibold(20.0)));
@@ -1896,7 +1954,7 @@ impl App {
                 ui.label(RichText::new(t!("Diese Ordner erscheinen in der Bibliothek. Du kannst jederzeit weitere hinzufügen.")).color(t.text_dim));
                 ui.add_space(10.0);
                 let mut s = self.data.settings.clone();
-                for (label, list) in [("Videos", &mut s.video_folders), (t!("Musik"), &mut s.music_folders)] {
+                for (music, (label, list)) in [("Videos", &mut s.video_folders), (t!("Musik"), &mut s.music_folders)].into_iter().enumerate().map(|(i, x)| (i == 1, x)) {
                     ui.label(RichText::new(label).font(theme::semibold(13.5)));
                     let mut rm = None;
                     for (i, f) in list.iter().enumerate() {
@@ -1912,11 +1970,16 @@ impl App {
                         list.remove(i);
                     }
                     if ui.button(tf!("{}  Ordner hinzufügen", ph::PLUS)).clicked() {
-                        if let Some(d) = rfd::FileDialog::new().pick_folder() {
-                            list.push(d);
-                        }
+                        self.pick(Pick::LibraryFolder { music, show: false });
+                        *list = if music { self.data.settings.music_folders.clone() } else { self.data.settings.video_folders.clone() };
                     }
                     ui.add_space(8.0);
+                }
+                if crate::platform::MOBILE && !self.storage.media() {
+                    ui.label(RichText::new(t!("Damit Velour deine Videos und Musik findet, braucht es Zugriff auf den Speicher.")).color(t.text_dim));
+                    if ui.button(t!("Zugriff erlauben")).clicked() {
+                        crate::pick::request_storage();
+                    }
                 }
                 if s.video_folders != self.data.settings.video_folders || s.music_folders != self.data.settings.music_folders {
                     let ctx = ui.ctx().clone();
@@ -1929,7 +1992,7 @@ impl App {
             ui.add_space(400.0 - used);
         }
         ui.horizontal(|ui| {
-            for i in 0..3u8 {
+            for i in (0..3u8).filter(|i| !(crate::platform::MOBILE && *i == 1)) {
                 let (r, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
                 ui.painter().circle_filled(r.center(), 4.0, if i == step { t.accent } else { t.hover });
             }
@@ -1946,7 +2009,7 @@ impl App {
                     }
                 }
                 if step > 0 && widgets::ghost_button(ui, &t, t!("Zurück")).clicked() {
-                    self.dialog = Some(Dialog::Onboarding(step - 1));
+                    self.dialog = Some(Dialog::Onboarding(if crate::platform::MOBILE && step == 2 { 0 } else { step - 1 }));
                 }
                 if widgets::ghost_button(ui, &t, t!("Überspringen")).clicked() {
                     self.data.settings.onboarding_done = true;

@@ -3,6 +3,28 @@
 All notable changes to Velour. The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.1.3] - 2026-11-13
+
+### Android
+- Velour asks for access to your videos and music, so the library finds them; if you said no,
+  a card in Videos and Music and *Settings → Library* let you allow it later
+- "Open file", "Open folder", adding to the queue, subtitles, library folders and playlists use
+  the Android file picker
+- A player in the notification shade and on the lock screen with previous, play/pause and next;
+  music and radio keep playing with the screen off, and pause when headphones are unplugged
+- Options that only make sense on a computer are hidden (keyboard shortcuts, FFmpeg, yt-dlp,
+  recording and converting, "Show in Explorer")
+
+### Library
+- When a played file is gone, Velour asks once whether to remove it from the history and
+  lists or keep it, and remembers the answer (*Settings → Library → Missing media*). After
+  that it only tells you briefly. A missing USB stick, SD card or network drive removes nothing
+- TV channels and radio stations show as live in "Recently played" instead of with a progress
+
+### Plex
+- "Continue watching" on the start page shows what Plex lists under "On Deck", including the
+  next episode of a show you're watching, most recent first
+
 ## [0.1.2] - 2026-11-13
 
 ### TV and radio

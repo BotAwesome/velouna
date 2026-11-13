@@ -193,6 +193,459 @@ public class VelourActivity extends NativeActivity {
         return installMessage;
     }
 
+    // ------------------------------------------------------------ storage
+
+    private static final int REQ_STORAGE = 7;
+
+    private static String[] storagePermissions() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            return new String[] {"android.permission.READ_MEDIA_VIDEO", "android.permission.READ_MEDIA_AUDIO"};
+        }
+        return new String[] {"android.permission.READ_EXTERNAL_STORAGE"};
+    }
+
+    /**
+     * What Velour may read: bit 1 videos, bit 2 music, bit 4 all files
+     * (subtitles and playlists next to the media as well).
+     */
+    public int storageAccess() {
+        int bits = 0;
+        if (Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission("android.permission.READ_MEDIA_VIDEO") == android.content.pm.PackageManager.PERMISSION_GRANTED) bits |= 1;
+            if (checkSelfPermission("android.permission.READ_MEDIA_AUDIO") == android.content.pm.PackageManager.PERMISSION_GRANTED) bits |= 2;
+        } else if (checkSelfPermission("android.permission.READ_EXTERNAL_STORAGE") == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            bits |= 3;
+        }
+        if (Build.VERSION.SDK_INT >= 30) {
+            if (android.os.Environment.isExternalStorageManager()) bits |= 7;
+        } else if ((bits & 3) == 3) {
+            // Before Android 11 the storage permission covers every file.
+            bits |= 4;
+        }
+        return bits;
+    }
+
+    /** Velour asked for the storage permission before (shown once by itself). */
+    public boolean storageAsked() {
+        return getPreferences(MODE_PRIVATE).getBoolean("storage_asked", false);
+    }
+
+    /**
+     * Asks for the media permissions; once Android no longer shows the
+     * dialog (denied twice), opens Velour's page in the system settings.
+     */
+    public void requestStorage() {
+        runOnUiThread(() -> {
+            java.util.List<String> missing = new java.util.ArrayList<>();
+            boolean rationale = false;
+            for (String p : storagePermissions()) {
+                if (checkSelfPermission(p) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                    missing.add(p);
+                    rationale |= shouldShowRequestPermissionRationale(p);
+                }
+            }
+            if (missing.isEmpty()) return;
+            android.content.SharedPreferences prefs = getPreferences(MODE_PRIVATE);
+            if (prefs.getBoolean("storage_asked", false) && !rationale) {
+                openAppSettings();
+                return;
+            }
+            prefs.edit().putBoolean("storage_asked", true).apply();
+            requestPermissions(missing.toArray(new String[0]), REQ_STORAGE);
+        });
+    }
+
+    /** "All files access" (Android 11+); before that the normal storage dialog. */
+    public void openAllFilesAccess() {
+        if (Build.VERSION.SDK_INT < 30) {
+            requestStorage();
+            return;
+        }
+        runOnUiThread(() -> {
+            try {
+                startActivity(new android.content.Intent(android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        android.net.Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                try {
+                    startActivity(new android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+                } catch (Exception ignored) {
+                }
+            }
+        });
+    }
+
+    private void openAppSettings() {
+        try {
+            startActivity(new android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                    android.net.Uri.parse("package:" + getPackageName())));
+        } catch (Exception ignored) {
+        }
+    }
+
+    // ------------------------------------------------------------ picker
+
+    private static final int REQ_PICK = 41;
+    /** Media files (play / queue / playlist). */
+    static final int PICK_MEDIA = 0;
+    /** Subtitle files (copied into the cache when the file itself can't be read). */
+    static final int PICK_SUBTITLES = 1;
+    /** A folder. */
+    static final int PICK_FOLDER = 2;
+
+    private volatile String[] pickResult;
+    private volatile int pickMode;
+
+    /**
+     * Opens the system picker. The answer arrives in {@link #takePick()}:
+     * file paths (or fdclose://N for files without one), "!name" for an
+     * item Velour can't open, nothing when cancelled.
+     */
+    public void pick(final int mode, final boolean multiple) {
+        pickResult = null;
+        pickMode = mode;
+        runOnUiThread(() -> {
+            android.content.Intent i;
+            if (mode == PICK_FOLDER) {
+                i = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT_TREE);
+            } else {
+                i = new android.content.Intent(android.content.Intent.ACTION_OPEN_DOCUMENT);
+                i.addCategory(android.content.Intent.CATEGORY_OPENABLE);
+                i.setType("*/*");
+                if (mode == PICK_MEDIA) {
+                    i.putExtra(android.content.Intent.EXTRA_MIME_TYPES, new String[] {
+                            "video/*", "audio/*", "application/x-mpegurl", "audio/x-mpegurl", "application/vnd.apple.mpegurl", "audio/x-scpls"});
+                }
+                i.putExtra(android.content.Intent.EXTRA_ALLOW_MULTIPLE, multiple);
+            }
+            try {
+                startActivityForResult(i, REQ_PICK);
+            } catch (Exception e) {
+                pickResult = new String[0];
+            }
+        });
+    }
+
+    /** The picker's answer once, or null while it is still open. */
+    public String[] takePick() {
+        String[] r = pickResult;
+        if (r != null) pickResult = null;
+        return r;
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, android.content.Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode != REQ_PICK) return;
+        if (resultCode != RESULT_OK || data == null) {
+            pickResult = new String[0];
+            return;
+        }
+        final java.util.List<android.net.Uri> uris = new java.util.ArrayList<>();
+        android.content.ClipData clip = data.getClipData();
+        if (clip != null) {
+            for (int k = 0; k < clip.getItemCount(); k++) uris.add(clip.getItemAt(k).getUri());
+        } else if (data.getData() != null) {
+            uris.add(data.getData());
+        }
+        final int mode = pickMode;
+        // Resolving (and copying subtitles) may take a moment: off the UI thread.
+        new Thread(() -> {
+            java.util.List<String> out = new java.util.ArrayList<>();
+            for (android.net.Uri u : uris) {
+                String s = resolvePicked(u, mode);
+                if (s != null) out.add(s);
+            }
+            pickResult = out.toArray(new String[0]);
+        }).start();
+    }
+
+    private String resolvePicked(android.net.Uri uri, int mode) {
+        String name = displayName(uri);
+        if (mode == PICK_FOLDER) {
+            String p = pathOf(uri, true);
+            return p != null ? p : "!" + name;
+        }
+        String p = pathOf(uri, false);
+        if (p != null && new java.io.File(p).canRead()) return p;
+        if (mode == PICK_SUBTITLES) {
+            // Without "all files access" Android hides .srt files from the
+            // file system: a copy in the cache keeps its name for matching.
+            try {
+                java.io.File dir = new java.io.File(getCacheDir(), "subtitles");
+                dir.mkdirs();
+                java.io.File f = new java.io.File(dir, name.replace('/', '_'));
+                try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+                     java.io.OutputStream o = new java.io.FileOutputStream(f)) {
+                    if (in == null) return "!" + name;
+                    byte[] buf = new byte[1 << 15];
+                    int n;
+                    while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+                }
+                return f.getPath();
+            } catch (Exception e) {
+                return "!" + name;
+            }
+        }
+        // A file without a path (cloud storage, …): mpv reads the descriptor.
+        try {
+            android.os.ParcelFileDescriptor pfd = getContentResolver().openFileDescriptor(uri, "r");
+            if (pfd == null) return "!" + name;
+            return "fdclose://" + pfd.detachFd();
+        } catch (Exception e) {
+            return "!" + name;
+        }
+    }
+
+    private String displayName(android.net.Uri uri) {
+        try (android.database.Cursor c = getContentResolver().query(uri, new String[] {android.provider.OpenableColumns.DISPLAY_NAME}, null, null, null)) {
+            if (c != null && c.moveToFirst() && c.getString(0) != null) return c.getString(0);
+        } catch (Exception ignored) {
+        }
+        String s = uri.getLastPathSegment();
+        if (s == null) return "?";
+        int colon = s.lastIndexOf(':');
+        int slash = s.lastIndexOf('/');
+        return s.substring(Math.max(colon, slash) + 1);
+    }
+
+    /** File system path behind a picker URI, where there is one. */
+    private String pathOf(android.net.Uri uri, boolean tree) {
+        try {
+            if ("file".equals(uri.getScheme())) return uri.getPath();
+            String auth = uri.getAuthority();
+            String id;
+            if (tree) {
+                id = android.provider.DocumentsContract.getTreeDocumentId(uri);
+            } else if (android.provider.DocumentsContract.isDocumentUri(this, uri)) {
+                id = android.provider.DocumentsContract.getDocumentId(uri);
+            } else {
+                return queryData(uri);
+            }
+            if ("com.android.externalstorage.documents".equals(auth)) {
+                int c = id.indexOf(':');
+                String vol = c < 0 ? id : id.substring(0, c);
+                String rel = c < 0 ? "" : id.substring(c + 1);
+                String base = "primary".equalsIgnoreCase(vol)
+                        ? android.os.Environment.getExternalStorageDirectory().getPath()
+                        : "/storage/" + vol;
+                return rel.isEmpty() ? base : base + "/" + rel;
+            }
+            if ("com.android.providers.downloads.documents".equals(auth)) {
+                if (id.startsWith("raw:")) return id.substring(4);
+                if (id.equals("downloads")) {
+                    return android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_DOWNLOADS).getPath();
+                }
+                if (id.startsWith("msf:")) {
+                    return queryData(android.content.ContentUris.withAppendedId(android.provider.MediaStore.Files.getContentUri("external"), Long.parseLong(id.substring(4))));
+                }
+                return null;
+            }
+            if ("com.android.providers.media.documents".equals(auth)) {
+                String[] p = id.split(":");
+                android.net.Uri base;
+                switch (p[0]) {
+                    case "video": base = android.provider.MediaStore.Video.Media.EXTERNAL_CONTENT_URI; break;
+                    case "audio": base = android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI; break;
+                    default: base = android.provider.MediaStore.Files.getContentUri("external");
+                }
+                return queryData(android.content.ContentUris.withAppendedId(base, Long.parseLong(p[1])));
+            }
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    @SuppressWarnings("deprecation")
+    private String queryData(android.net.Uri uri) {
+        try (android.database.Cursor c = getContentResolver().query(uri, new String[] {android.provider.MediaStore.MediaColumns.DATA}, null, null, null)) {
+            if (c != null && c.moveToFirst()) return c.getString(0);
+        } catch (Exception ignored) {
+        }
+        return null;
+    }
+
+    // ------------------------------------------------------------ media session
+
+    static final int MEDIA_TOGGLE = 0;
+    static final int MEDIA_PLAY = 1;
+    static final int MEDIA_PAUSE = 2;
+    static final int MEDIA_NEXT = 3;
+    static final int MEDIA_PREV = 4;
+    static final int MEDIA_SEEK = 5;
+
+    /** Implemented in Rust (registered at start): runs the command on mpv. */
+    private static native void nativeMediaAction(int action, long arg);
+
+    /** Notification, lock screen, headset buttons, audio focus → mpv. */
+    static void mediaAction(int action, long arg) {
+        try {
+            nativeMediaAction(action, arg);
+        } catch (Throwable t) {
+            android.util.Log.w("Velour", "media action " + action + ": " + t);
+        }
+    }
+
+    private android.media.session.MediaSession session;
+    private android.media.AudioFocusRequest focusRequest;
+    private boolean hasFocus;
+    private boolean resumeOnGain;
+    private android.content.BroadcastReceiver noisy;
+    private String artPath;
+    private android.graphics.Bitmap art;
+
+    /** Labels in the UI language: previous, play, pause, next, channel name. */
+    public void setMediaLabels(String[] labels) {
+        if (labels != null && labels.length == 5) PlaybackService.labels = labels;
+    }
+
+    /**
+     * Shows what plays in the notification and on the lock screen.
+     * artPath: an image file, or null/empty for none.
+     */
+    public void updateMedia(final String title, final String text, final boolean playing, final long posMs, final long durMs,
+                            final float speed, final String artFile) {
+        runOnUiThread(() -> {
+            if (session == null) {
+                session = new android.media.session.MediaSession(this, "Velour");
+                session.setCallback(new android.media.session.MediaSession.Callback() {
+                    @Override public void onPlay() { mediaAction(MEDIA_PLAY, 0); }
+                    @Override public void onPause() { mediaAction(MEDIA_PAUSE, 0); }
+                    @Override public void onStop() { mediaAction(MEDIA_PAUSE, 0); }
+                    @Override public void onSkipToNext() { mediaAction(MEDIA_NEXT, 0); }
+                    @Override public void onSkipToPrevious() { mediaAction(MEDIA_PREV, 0); }
+                    @Override public void onSeekTo(long pos) { mediaAction(MEDIA_SEEK, pos); }
+                });
+                android.content.Intent open = new android.content.Intent(this, VelourActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                session.setSessionActivity(android.app.PendingIntent.getActivity(this, 0, open,
+                        android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT));
+            }
+            String file = artFile == null || artFile.isEmpty() ? null : artFile;
+            if (file == null ? artPath != null : !file.equals(artPath)) {
+                artPath = file;
+                art = file == null ? null : android.graphics.BitmapFactory.decodeFile(file);
+            }
+            android.media.MediaMetadata.Builder m = new android.media.MediaMetadata.Builder()
+                    .putString(android.media.MediaMetadata.METADATA_KEY_TITLE, title)
+                    .putString(android.media.MediaMetadata.METADATA_KEY_ARTIST, text)
+                    .putLong(android.media.MediaMetadata.METADATA_KEY_DURATION, durMs > 0 ? durMs : -1);
+            if (art != null) m.putBitmap(android.media.MediaMetadata.METADATA_KEY_ART, art);
+            session.setMetadata(m.build());
+            long actions = android.media.session.PlaybackState.ACTION_PLAY | android.media.session.PlaybackState.ACTION_PAUSE
+                    | android.media.session.PlaybackState.ACTION_PLAY_PAUSE | android.media.session.PlaybackState.ACTION_STOP
+                    | android.media.session.PlaybackState.ACTION_SKIP_TO_NEXT | android.media.session.PlaybackState.ACTION_SKIP_TO_PREVIOUS;
+            if (durMs > 0) actions |= android.media.session.PlaybackState.ACTION_SEEK_TO;
+            session.setPlaybackState(new android.media.session.PlaybackState.Builder()
+                    .setActions(actions)
+                    .setState(playing ? android.media.session.PlaybackState.STATE_PLAYING : android.media.session.PlaybackState.STATE_PAUSED,
+                            Math.max(0, posMs), playing ? speed : 0f)
+                    .build());
+            session.setActive(true);
+            if (playing) {
+                requestFocus();
+                listenNoisy(true);
+            } else {
+                listenNoisy(false);
+            }
+            PlaybackService.show(this, session.getSessionToken(), title, text, playing, art);
+            if (!playing) PlaybackService.detach(this);
+        });
+    }
+
+    /** Nothing loaded any more: notification away, audio focus back. */
+    public void stopMedia() {
+        runOnUiThread(() -> {
+            if (session != null) session.setActive(false);
+            listenNoisy(false);
+            abandonFocus();
+            PlaybackService.hide(this);
+        });
+    }
+
+    private void requestFocus() {
+        if (hasFocus) return;
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am == null) return;
+        if (focusRequest == null) {
+            android.media.AudioAttributes aa = new android.media.AudioAttributes.Builder()
+                    .setUsage(android.media.AudioAttributes.USAGE_MEDIA)
+                    .setContentType(android.media.AudioAttributes.CONTENT_TYPE_MOVIE)
+                    .build();
+            focusRequest = new android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN)
+                    .setAudioAttributes(aa)
+                    .setOnAudioFocusChangeListener(this::onFocusChange)
+                    .build();
+        }
+        hasFocus = am.requestAudioFocus(focusRequest) == android.media.AudioManager.AUDIOFOCUS_REQUEST_GRANTED;
+    }
+
+    private void abandonFocus() {
+        android.media.AudioManager am = getSystemService(android.media.AudioManager.class);
+        if (am != null && focusRequest != null) am.abandonAudioFocusRequest(focusRequest);
+        hasFocus = false;
+        resumeOnGain = false;
+    }
+
+    /** Another app plays (or a call comes in): pause; continue after a short interruption. */
+    private void onFocusChange(int change) {
+        switch (change) {
+            case android.media.AudioManager.AUDIOFOCUS_LOSS:
+                hasFocus = false;
+                resumeOnGain = false;
+                mediaAction(MEDIA_PAUSE, 0);
+                break;
+            case android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                android.media.session.PlaybackState st = session == null ? null : session.getController().getPlaybackState();
+                resumeOnGain = st != null && st.getState() == android.media.session.PlaybackState.STATE_PLAYING;
+                mediaAction(MEDIA_PAUSE, 0);
+                break;
+            case android.media.AudioManager.AUDIOFOCUS_GAIN:
+                hasFocus = true;
+                if (resumeOnGain) {
+                    resumeOnGain = false;
+                    mediaAction(MEDIA_PLAY, 0);
+                }
+                break;
+            default:
+                // Ducking: Android lowers the volume itself.
+        }
+    }
+
+    /** Headphones unplugged / Bluetooth gone: pause instead of playing aloud. */
+    private void listenNoisy(boolean on) {
+        if (on && noisy == null) {
+            noisy = new android.content.BroadcastReceiver() {
+                @Override
+                public void onReceive(android.content.Context c, android.content.Intent i) {
+                    mediaAction(MEDIA_PAUSE, 0);
+                }
+            };
+            android.content.IntentFilter f = new android.content.IntentFilter(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY);
+            if (Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(noisy, f, RECEIVER_NOT_EXPORTED);
+            } else {
+                registerReceiver(noisy, f);
+            }
+        } else if (!on && noisy != null) {
+            try {
+                unregisterReceiver(noisy);
+            } catch (Exception ignored) {
+            }
+            noisy = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        listenNoisy(false);
+        abandonFocus();
+        PlaybackService.hide(this);
+        if (session != null) {
+            session.release();
+            session = null;
+        }
+        super.onDestroy();
+    }
+
     /** Hide status and navigation bar (swipe brings them back briefly). */
     @SuppressWarnings("deprecation")
     public void setImmersive(final boolean on) {

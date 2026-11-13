@@ -20,6 +20,7 @@ mod logo;
 mod media;
 mod mobile;
 mod mpv;
+mod pick;
 mod platform;
 mod player;
 mod plex;

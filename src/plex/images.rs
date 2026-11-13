@@ -58,6 +58,7 @@ pub struct Images {
     entries: HashMap<String, Img>,
     frame: u64,
     fading: bool,
+    dir: PathBuf,
 }
 
 fn disk_path(dir: &std::path::Path, key: &str) -> PathBuf {
@@ -94,6 +95,7 @@ impl Images {
     fn start(ctx: egui::Context, src: Source, workers: usize) -> Images {
         let queue: Arc<(Mutex<Vec<Job>>, Condvar)> = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
         let (tx, rx) = channel();
+        let dir = src.dir.clone();
         for _ in 0..workers {
             let q = queue.clone();
             let tx = tx.clone();
@@ -118,7 +120,15 @@ impl Images {
                 }
             });
         }
-        Images { queue, rx, tx, entries: HashMap::new(), frame: 0, fading: false }
+        Images { queue, rx, tx, entries: HashMap::new(), frame: 0, fading: false, dir }
+    }
+
+    /// The downloaded original of `key` on disk, once it has been loaded.
+    #[allow(dead_code)]
+    pub fn cached_file(&self, key: &str) -> Option<PathBuf> {
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        key.hash(&mut h);
+        Some(self.dir.join(format!("{:016x}.img", h.finish()))).filter(|p| p.is_file())
     }
 
     /// Uploads finished images and evicts unused textures. Call once per frame.

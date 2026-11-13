@@ -53,6 +53,16 @@ fn with_now(guides: &HashMap<String, Arc<crate::epg::Guide>>, country: Option<&s
 
 /// The built-in iptv-org list opens the language browser instead of
 /// loading thousands of channels into the queue.
+/// Icon of a TV channel / radio station in the history.
+fn live_icon(h: &crate::config::HistoryEntry) -> Option<&'static str> {
+    h.live.then_some(if h.audio_only { ph::RADIO } else { ph::TELEVISION_SIMPLE })
+}
+
+/// "Radio · Live" / "TV · Live" for a channel in the history.
+fn live_label(h: &crate::config::HistoryEntry) -> String {
+    format!("{} · Live", if h.audio_only { "Radio" } else { "TV" })
+}
+
 fn is_iptv_org(url: &str) -> bool {
     url.starts_with("https://iptv-org.github.io/iptv/index")
 }
@@ -285,9 +295,15 @@ impl App {
                 h.sort_by(|a, b| b.last_played.cmp(&a.last_played));
                 h.into_iter()
                     .map(|h| Entry {
-                        icon: if h.audio_only { ph::MUSIC_NOTE } else if media::is_url(&h.path) { ph::BROADCAST } else { ph::FILM_STRIP },
+                        icon: live_icon(&h).unwrap_or(if h.audio_only { ph::MUSIC_NOTE } else if media::is_url(&h.path) { ph::BROADCAST } else { ph::FILM_STRIP }),
                         kind: Kind::File(h.path.clone()),
-                        sub: if h.duration > 0.0 { format!("{} / {}", media::fmt_time_short(h.position), media::fmt_time_short(h.duration)) } else { String::new() },
+                        sub: if h.live {
+                            live_label(&h)
+                        } else if h.duration > 0.0 {
+                            format!("{} / {}", media::fmt_time_short(h.position), media::fmt_time_short(h.duration))
+                        } else {
+                            String::new()
+                        },
                         title: h.title,
                     })
                     .collect()
@@ -490,6 +506,7 @@ impl App {
     /// Notes logo and kind (radio) of a channel / station being queued.
     fn remember_stream(&mut self, kind: &Kind) {
         let Some((url, _)) = self.tv_item(kind) else { return };
+        self.live_urls.insert(url.clone());
         if matches!(kind, Kind::Radio(_) | Kind::RadioFav(_)) {
             self.radio_urls.insert(url.clone());
         }
@@ -505,6 +522,7 @@ impl App {
             Kind::RadioFav(i) => self.data.radio_favorites.get(*i)?.favicon.clone(),
             Kind::Channel(i) => self.tv.catalog()?.channels.get(*i)?.logo.clone()?,
             Kind::Fav(i) => self.data.tv_favorites.get(*i)?.logo.clone(),
+            Kind::File(f) => self.data.history_for(f)?.logo.clone()?,
             Kind::Go(LibLoc::Tv(Some((code, _)))) => crate::flags::for_language(code)?,
             Kind::Go(LibLoc::Radio(Some((name, _)))) => crate::flags::for_language(self.radio.iso_of(name)?)?,
             _ => return None,
@@ -742,14 +760,18 @@ impl App {
             *out = Some(Click::Menu(MenuAct::Pin, idx));
             ui.close();
         }
-        if let Kind::File(f) = &e.kind {
+        // Live channels have nothing to watch to the end.
+        if let Kind::File(f) = &e.kind
+            && !self.data.history_for(f).is_some_and(|h| h.live)
+        {
             let watched = self.data.history_for(f).map(|h| h.finished).unwrap_or(false);
             if widgets::menu_item(ui, &t, if watched { ph::EYE_SLASH } else { ph::EYE }, if watched { t!("Als ungesehen markieren") } else { t!("Als gesehen markieren") }, "", false).clicked() {
                 *out = Some(Click::Menu(MenuAct::Watched(!watched), idx));
                 ui.close();
             }
         }
-        if matches!(&e.kind, Kind::File(f) if !media::is_url(f)) || matches!(e.kind, Kind::Folder(_)) {
+        // Phones have no Explorer to show a file in.
+        if !crate::platform::MOBILE && (matches!(&e.kind, Kind::File(f) if !media::is_url(f)) || matches!(e.kind, Kind::Folder(_))) {
             if widgets::menu_item(ui, &t, ph::FOLDER_OPEN, t!("Im Explorer anzeigen"), "", false).clicked() {
                 *out = Some(Click::Menu(MenuAct::Explorer, idx));
                 ui.close();
@@ -969,22 +991,8 @@ impl App {
     }
 
     pub fn add_library_folder(&mut self) {
-        if let Some(d) = rfd::FileDialog::new().set_title(t!("Ordner zur Bibliothek hinzufügen")).pick_folder() {
-            let music = matches!(self.lib.loc, LibLoc::Music(_) | LibLoc::MusicFolder(_));
-            if music {
-                if !self.data.settings.music_folders.contains(&d) {
-                    self.data.settings.music_folders.push(d);
-                }
-                let ctx = egui::Context::default();
-                let _ = ctx;
-                self.lib.music_files.clear();
-                self.lib.scanning = false;
-            } else if !self.data.settings.video_folders.contains(&d) {
-                self.data.settings.video_folders.push(d.clone());
-                self.lib.go(LibLoc::Videos(Some(d)));
-            }
-            self.mark_dirty();
-        }
+        let music = matches!(self.lib.loc, LibLoc::Music(_) | LibLoc::MusicFolder(_));
+        self.pick(crate::pick::Pick::LibraryFolder { music, show: true });
     }
 
     fn header_nav(&mut self, ui: &mut Ui, compact: bool) {
@@ -1445,6 +1453,9 @@ impl App {
             let mut click = None;
             self.lib_toolbar(ui, entries.iter().filter(|e| !matches!(e.kind, Kind::NewPlaylist | Kind::NewStream)).count(), touch, &entries, &mut click);
             widgets::separator(ui, &t);
+            if crate::platform::MOBILE && matches!(self.lib.loc, LibLoc::Videos(_) | LibLoc::Music(_) | LibLoc::MusicFolder(_)) {
+                self.storage_card(ui);
+            }
             if mini {
                 ui.set_max_height(ui.available_height() - 4.0);
             }
@@ -1453,6 +1464,30 @@ impl App {
                 self.handle_click(c, &entries, touch);
             }
         }
+    }
+
+    /// Android without the storage permission: the library can't see any
+    /// file, say why and ask.
+    fn storage_card(&mut self, ui: &mut Ui) {
+        if self.storage.media() {
+            return;
+        }
+        let t = self.t;
+        ui.add_space(10.0);
+        egui::Frame::new().fill(t.elevated).corner_radius(CornerRadius::same(theme::R_LG)).inner_margin(egui::Margin::same(14)).show(ui, |ui| {
+            ui.set_width(ui.available_width());
+            ui.horizontal(|ui| {
+                ui.label(RichText::new(ph::LOCK_SIMPLE).size(18.0).color(t.accent));
+                ui.label(RichText::new(t!("Zugriff auf Videos und Musik")).font(theme::semibold(15.0)).color(t.text));
+            });
+            ui.add_space(4.0);
+            ui.label(RichText::new(t!("Velour braucht deine Erlaubnis, um die Videos und die Musik auf diesem Gerät anzuzeigen.")).color(t.text_dim));
+            ui.add_space(8.0);
+            if widgets::accent_button(ui, &t, t!("Zugriff erlauben")).clicked() {
+                crate::pick::request_storage();
+            }
+        });
+        ui.add_space(6.0);
     }
 
     fn mini_player(&mut self, ui: &mut Ui, area: Rect) {
@@ -1515,14 +1550,11 @@ impl App {
             });
             ui.add_space(14.0);
             ui.horizontal_wrapped(|ui| {
-                // No file picker on Android yet (needs the Storage Access Framework).
-                if !crate::platform::MOBILE {
-                    if widgets::icon_text_button(ui, &t, ph::FILE_PLUS, t!("Datei öffnen")).clicked() {
-                        self.dialog_open_files();
-                    }
-                    if widgets::icon_text_button(ui, &t, ph::FOLDER_OPEN, t!("Ordner öffnen")).clicked() {
-                        self.dialog_open_folder();
-                    }
+                if widgets::icon_text_button(ui, &t, ph::FILE_PLUS, t!("Datei öffnen")).clicked() {
+                    self.dialog_open_files();
+                }
+                if widgets::icon_text_button(ui, &t, ph::FOLDER_OPEN, t!("Ordner öffnen")).clicked() {
+                    self.dialog_open_folder();
                 }
                 if widgets::icon_text_button(ui, &t, ph::BROADCAST, t!("Netzwerkstream")).clicked() {
                     self.dialog = Some(Dialog::Network);
@@ -1679,10 +1711,24 @@ impl App {
                     if resp.hovered() {
                         ui.painter().rect_filled(rect, CornerRadius::same(theme::R), t.hover);
                     }
-                    let icon = if h.audio_only { ph::MUSIC_NOTE } else if media::is_url(&h.path) { ph::BROADCAST } else { ph::FILM_STRIP };
-                    ui.painter().text(pos2(rect.left() + 18.0, rect.center().y), Align2::CENTER_CENTER, icon, theme::icon(16.0), t.text_dim);
-                    let folder = media::parent_folder_name(&h.path).unwrap_or_else(|| "Stream".into());
-                    let status = if h.finished { t!("gesehen").to_string() } else if h.duration > 0.0 { format!("{:.0} %", h.progress() * 100.0) } else { String::new() };
+                    let icon = live_icon(h).unwrap_or(if h.audio_only { ph::MUSIC_NOTE } else if media::is_url(&h.path) { ph::BROADCAST } else { ph::FILM_STRIP });
+                    let logo_drawn = match &h.logo {
+                        Some(l) => self.paint_logo(ui, l, Rect::from_center_size(pos2(rect.left() + 18.0, rect.center().y), vec2(24.0, 24.0))),
+                        None => false,
+                    };
+                    if !logo_drawn {
+                        ui.painter().text(pos2(rect.left() + 18.0, rect.center().y), Align2::CENTER_CENTER, icon, theme::icon(16.0), t.text_dim);
+                    }
+                    let folder = if h.live { live_label(h) } else { media::parent_folder_name(&h.path).unwrap_or_else(|| "Stream".into()) };
+                    let status = if h.live {
+                        String::new()
+                    } else if h.finished {
+                        t!("gesehen").to_string()
+                    } else if h.duration > 0.0 {
+                        format!("{:.0} %", h.progress() * 100.0)
+                    } else {
+                        String::new()
+                    };
                     let status_col = if h.finished { t.accent } else { t.text_faint };
                     if touch {
                         // Two lines: title, then folder · status.

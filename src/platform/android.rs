@@ -210,3 +210,229 @@ pub fn system_insets_px() -> Option<[f32; 4]> {
         Ok(v.map(|x| x as f32))
     })
 }
+
+// ------------------------------------------------------------ storage
+
+/// What Velour may read on the device.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Storage {
+    pub videos: bool,
+    pub music: bool,
+    /// Every file (subtitles and playlists next to the media too).
+    pub all_files: bool,
+}
+
+/// Current storage permissions (None if the activity can't be asked).
+pub fn storage() -> Option<Storage> {
+    let bits = with_activity(|env, activity| env.call_method(activity, "storageAccess", "()I", &[])?.i())?;
+    Some(Storage { videos: bits & 1 != 0, music: bits & 2 != 0, all_files: bits & 4 != 0 })
+}
+
+/// Velour asked for the storage permission before.
+pub fn storage_asked() -> bool {
+    with_activity(|env, activity| env.call_method(activity, "storageAsked", "()Z", &[])?.z()).unwrap_or(true)
+}
+
+/// Shows Android's permission dialog (or the app's system settings page
+/// once Android won't show the dialog again).
+pub fn request_storage() {
+    with_activity(|env, activity| {
+        env.call_method(activity, "requestStorage", "()V", &[])?;
+        Ok(())
+    });
+}
+
+/// Opens the "all files access" page for Velour.
+pub fn open_all_files_access() {
+    with_activity(|env, activity| {
+        env.call_method(activity, "openAllFilesAccess", "()V", &[])?;
+        Ok(())
+    });
+}
+
+// ------------------------------------------------------------ picker
+
+/// What the system picker should offer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PickMode {
+    Media = 0,
+    Subtitles = 1,
+    Folder = 2,
+}
+
+/// Opens Android's file / folder picker; the answer comes from `take_pick`.
+pub fn pick(mode: PickMode, multiple: bool) {
+    with_activity(|env, activity| {
+        env.call_method(activity, "pick", "(IZ)V", &[JValue::Int(mode as i32), JValue::Bool(multiple as u8)])?;
+        Ok(())
+    });
+}
+
+/// The picker's answer once it is closed: paths (`fdclose://N` for files
+/// without one), "!name" for items that can't be opened; empty when
+/// cancelled. None while the picker is still open.
+pub fn take_pick() -> Option<Vec<String>> {
+    with_activity(|env, activity| {
+        let arr = env.call_method(activity, "takePick", "()[Ljava/lang/String;", &[])?.l()?;
+        if arr.is_null() {
+            return Ok(None);
+        }
+        let arr = jni::objects::JObjectArray::from(arr);
+        let n = env.get_array_length(&arr)?;
+        let mut out = Vec::with_capacity(n as usize);
+        for i in 0..n {
+            let s = env.get_object_array_element(&arr, i)?;
+            if !s.is_null() {
+                out.push(env.get_string(&s.into())?.into());
+            }
+        }
+        Ok(Some(out))
+    })
+    .flatten()
+}
+
+// ------------------------------------------------------------ media session
+
+static MEDIA_MPV: OnceLock<std::sync::Arc<crate::mpv::Mpv>> = OnceLock::new();
+static MEDIA_WAKE: (std::sync::Mutex<bool>, std::sync::Condvar) = (std::sync::Mutex::new(false), std::sync::Condvar::new());
+/// Image shown in the notification (station logo, cover), set by the app.
+static MEDIA_ART: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Notification / lock screen / headset button -> mpv. Runs on a Java
+/// thread, also while the app's UI is in the background.
+extern "system" fn native_media_action(_env: jni::JNIEnv, _class: jni::objects::JClass, action: jni::sys::jint, arg: jni::sys::jlong) {
+    let Some(m) = MEDIA_MPV.get() else { return };
+    let r = match action {
+        0 => m.command(&["cycle", "pause"]),
+        1 => m.set_flag("pause", false),
+        2 => m.set_flag("pause", true),
+        3 => m.command(&["playlist-next"]),
+        // Like the player's own button: back to the start first.
+        4 if m.get_f64("time-pos").unwrap_or(0.0) > 3.0 => m.command(&["seek", "0", "absolute"]),
+        4 => m.command(&["playlist-prev"]),
+        5 => m.command(&["seek", &format!("{:.3}", arg as f64 / 1000.0), "absolute"]),
+        _ => Ok(()),
+    };
+    if let Err(e) = r {
+        log::info!("media action {action}: {e}");
+    }
+    wake_media();
+}
+
+fn wake_media() {
+    if let Ok(mut w) = MEDIA_WAKE.0.lock() {
+        *w = true;
+        MEDIA_WAKE.1.notify_all();
+    }
+}
+
+/// Picture for the notification (a local image file), None for none.
+pub fn set_media_art(path: Option<String>) {
+    let changed = match MEDIA_ART.lock() {
+        Ok(mut a) if *a != path => {
+            *a = path;
+            true
+        }
+        _ => false,
+    };
+    if changed {
+        wake_media();
+    }
+}
+
+/// Starts the media session: registers the native callback and follows
+/// mpv in a thread of its own (the UI loop doesn't run in the background).
+pub fn media_init(mpv: std::sync::Arc<crate::mpv::Mpv>, labels: [&str; 5]) {
+    if MEDIA_MPV.set(mpv.clone()).is_err() {
+        return;
+    }
+    with_activity(|env, activity| {
+        let class = env.get_object_class(activity)?;
+        env.register_native_methods(
+            &class,
+            &[jni::NativeMethod { name: "nativeMediaAction".into(), sig: "(IJ)V".into(), fn_ptr: native_media_action as *mut std::ffi::c_void }],
+        )?;
+        let string_class = env.find_class("java/lang/String")?;
+        let arr = env.new_object_array(5, &string_class, JObject::null())?;
+        for (i, l) in labels.iter().enumerate() {
+            let s = env.new_string(l)?;
+            env.set_object_array_element(&arr, i as i32, &s)?;
+        }
+        env.call_method(activity, "setMediaLabels", "([Ljava/lang/String;)V", &[JValue::Object(&arr)])?;
+        Ok(())
+    });
+    std::thread::Builder::new().name("media-session".into()).spawn(move || media_loop(mpv)).ok();
+}
+
+#[derive(PartialEq)]
+struct Shown {
+    title: String,
+    text: String,
+    playing: bool,
+    duration_ms: i64,
+    art: Option<String>,
+}
+
+fn media_loop(m: std::sync::Arc<crate::mpv::Mpv>) {
+    use std::time::{Duration, Instant};
+    let mut shown: Option<Shown> = None;
+    // Position, time and speed of the last update, to spot seeks.
+    let mut sent = (0.0f64, Instant::now(), 1.0f64);
+    loop {
+        if let Ok(w) = MEDIA_WAKE.0.lock() {
+            let (mut w, _) = MEDIA_WAKE.1.wait_timeout_while(w, Duration::from_secs(1), |w| !*w).unwrap_or_else(|e| e.into_inner());
+            *w = false;
+        }
+        let idle = m.get("idle-active").and_then(|v| v.as_bool()).unwrap_or(true);
+        let path = m.get_string("path").unwrap_or_default();
+        if idle || path.is_empty() {
+            if shown.take().is_some() {
+                with_activity(|env, activity| {
+                    env.call_method(activity, "stopMedia", "()V", &[])?;
+                    Ok(())
+                });
+            }
+            continue;
+        }
+        let title = m.get_string("media-title").unwrap_or_default();
+        let meta = |k: &str| m.get_string(&format!("metadata/by-key/{k}")).map(|s| s.trim().to_string()).filter(|s| !s.is_empty() && s != "-");
+        // Radio: the song on top, the station below.
+        let (title, text) = match meta("icy-title").filter(|s| *s != title.trim()) {
+            Some(song) => (song, title),
+            None => (title, meta("artist").or_else(|| meta("album_artist")).unwrap_or_else(|| "Velour".into())),
+        };
+        let playing = !m.get("pause").and_then(|v| v.as_bool()).unwrap_or(true);
+        let pos = m.get_f64("time-pos").unwrap_or(0.0);
+        let dur = m.get_f64("duration").unwrap_or(0.0);
+        let speed = m.get_f64("speed").unwrap_or(1.0);
+        let art = MEDIA_ART.lock().ok().and_then(|a| a.clone());
+        let now = Shown { title, text, playing, duration_ms: (dur * 1000.0) as i64, art };
+        let expected = sent.0 + if playing { sent.1.elapsed().as_secs_f64() * sent.2 } else { 0.0 };
+        let jumped = (pos - expected).abs() > 2.0;
+        if shown.as_ref() == Some(&now) && !jumped && sent.1.elapsed() < Duration::from_secs(30) {
+            continue;
+        }
+        sent = (pos, Instant::now(), if playing { speed } else { 1.0 });
+        with_activity(|env, activity| {
+            let t = env.new_string(&now.title)?;
+            let x = env.new_string(&now.text)?;
+            let a = env.new_string(now.art.as_deref().unwrap_or(""))?;
+            env.call_method(
+                activity,
+                "updateMedia",
+                "(Ljava/lang/String;Ljava/lang/String;ZJJFLjava/lang/String;)V",
+                &[
+                    JValue::Object(&t),
+                    JValue::Object(&x),
+                    JValue::Bool(now.playing as u8),
+                    JValue::Long((pos * 1000.0) as i64),
+                    JValue::Long(now.duration_ms),
+                    JValue::Float(speed as f32),
+                    JValue::Object(&a),
+                ],
+            )?;
+            Ok(())
+        });
+        shown = Some(now);
+    }
+}

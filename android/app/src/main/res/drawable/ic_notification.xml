@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Status bar icon: the Velour V in one color (Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="96"
+    android:viewportHeight="96">
+    <path android:fillColor="#FFFFFFFF" android:pathData="M84,14 Q69,52 50,82 L46,82 Q57,47 65,14 Z" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,14 Q27,52 46,82 L50,82 Q39,47 31,14 Z" />
+</vector>

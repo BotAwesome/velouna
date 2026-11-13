@@ -1,6 +1,6 @@
 //! Application state, mpv lifecycle and non-visual logic.
 
-use crate::config::{self, Bookmark, Data, HistoryEntry, Preset, RepeatMode, Settings};
+use crate::config::{self, Bookmark, Data, HistoryEntry, MissingMedia, Preset, RepeatMode, Settings};
 use crate::hotkeys::{self, Action, Bindings, Combo};
 use crate::library::LibraryState;
 use crate::media::{self, Cue, MediaResult, MediaTools};
@@ -80,6 +80,8 @@ pub enum Dialog {
     WhatsNew(String),
     /// Program guide of a TV channel.
     TvGuide { title: String, country: String, keys: Vec<String> },
+    /// Local files that are gone: remove or keep (asked once).
+    MissingMedia(Vec<String>),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -262,6 +264,25 @@ pub struct App {
     pub stream_logos: HashMap<String, String>,
     /// Stream URLs of radio stations put in the queue (live, no end).
     pub radio_urls: std::collections::HashSet<String>,
+    /// TV channels and radio stations queued from their pages (live, no
+    /// position to remember).
+    pub live_urls: std::collections::HashSet<String>,
+    /// Android: the system picker is open for this.
+    #[allow(dead_code)]
+    pub pending_pick: Option<crate::pick::Pick>,
+    /// What Velour may read on the device (always everything on desktop).
+    pub storage: crate::pick::StorageAccess,
+    /// When `storage` was last asked (Android, the user may change it in
+    /// the system settings at any time).
+    #[allow(dead_code)]
+    pub storage_checked: Instant,
+    /// Gone files waiting for the "not found" question.
+    pub missing_pending: Vec<String>,
+    /// Background check of the played files (start of the app).
+    pub missing_rx: Option<std::sync::mpsc::Receiver<Vec<String>>>,
+    /// The storage dialog was shown by itself once this run.
+    #[allow(dead_code)]
+    pub storage_prompted: bool,
 }
 
 fn init_mpv(s: &Settings) -> Result<Arc<Mpv>, String> {
@@ -335,6 +356,9 @@ impl App {
                 let c2 = ctx.clone();
                 mpv.set_wakeup_callback(Box::new(move || c2.request_repaint()));
                 let video = VideoRenderer::new(mpv.clone(), ctx.clone());
+                // Notification / lock screen controls.
+                #[cfg(target_os = "android")]
+                crate::platform::android::media_init(mpv.clone(), [t!("Vorheriger Titel"), t!("Abspielen"), t!("Pause"), t!("Nächster Titel"), t!("Wiedergabe")]);
                 (Some(Player::new(mpv)), Some(video), None)
             }
             Err(e) => (None, None, Some(e)),
@@ -428,6 +452,13 @@ impl App {
             logos: crate::plex::images::Images::web(ctx.clone(), "logo_img", 192),
             stream_logos: HashMap::new(),
             radio_urls: Default::default(),
+            live_urls: Default::default(),
+            pending_pick: None,
+            storage: crate::pick::StorageAccess::current(),
+            storage_checked: Instant::now(),
+            storage_prompted: false,
+            missing_pending: Vec::new(),
+            missing_rx: None,
             data,
         };
         app.apply_sub_style_from_settings();
@@ -449,6 +480,8 @@ impl App {
         if app.update.restore() {
             app.update.prompt = true;
         }
+        // Played local files that were moved or deleted since.
+        app.start_missing_check(&ctx);
         if app.data.settings.always_on_top {
             ctx.send_viewport_cmd(ViewportCommand::WindowLevel(egui::WindowLevel::AlwaysOnTop));
         }
@@ -461,6 +494,7 @@ impl App {
     /// prompt for a found release (held back while something plays).
     fn update_tick(&mut self, ctx: &egui::Context) {
         use crate::update::Status;
+        self.missing_tick();
         if !self.update.auto_done && ctx.cumulative_pass_nr() > 2 {
             self.update.auto_done = true;
             let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
@@ -493,6 +527,12 @@ impl App {
 
     pub fn osd(&mut self, text: impl Into<String>) {
         self.osd = Some(Osd { chips: vec![], text: text.into(), until: Instant::now() + Duration::from_millis(1600) });
+    }
+
+    /// A notice that comes by itself (not after a key or click): longer, so
+    /// it can be read.
+    pub fn notice(&mut self, text: impl Into<String>) {
+        self.osd = Some(Osd { chips: vec![], text: text.into(), until: Instant::now() + Duration::from_millis(4000) });
     }
 
     pub fn osd_keys(&mut self, combo: Option<Combo>, text: impl Into<String>) {
@@ -570,11 +610,19 @@ impl App {
 
     /// Replace the queue with `list` and start playing at `start`.
     pub fn play_list(&mut self, list: &[String], start: usize) {
-        let Some(p) = &self.player else { return };
+        if self.player.is_none() || list.is_empty() {
+            return;
+        }
+        // Files that are gone don't go into the queue; playback starts at
+        // the next one that is still there.
+        let start = start.min(list.len() - 1);
+        let before = list.iter().take(start).filter(|p| media_state(p) == MediaState::Here).count();
+        let list = self.drop_missing(list);
         if list.is_empty() {
             return;
         }
-        let start = start.min(list.len() - 1);
+        let start = before.min(list.len() - 1);
+        let Some(p) = &self.player else { return };
         p.load(&list[start], LoadMode::Replace, None);
         for (i, item) in list.iter().enumerate().take(start) {
             let _ = p.mpv.command(&["loadfile", item, "insert-at", &i.to_string()]);
@@ -594,6 +642,10 @@ impl App {
     }
 
     pub fn enqueue(&mut self, list: &[String]) {
+        let list = &self.drop_missing(list);
+        if list.is_empty() {
+            return;
+        }
         let Some(p) = &self.player else { return };
         let was_idle = !p.st.has_media();
         for (i, item) in list.iter().enumerate() {
@@ -608,6 +660,10 @@ impl App {
     }
 
     pub fn play_next(&mut self, list: &[String]) {
+        let list = &self.drop_missing(list);
+        if list.is_empty() {
+            return;
+        }
         let Some(p) = &self.player else { return };
         for item in list.iter().rev() {
             let _ = p.mpv.command(&["loadfile", item, "insert-next"]);
@@ -615,33 +671,137 @@ impl App {
         self.osd(t!("Wird als Nächstes abgespielt"));
     }
 
+    /// `list` without local files that are gone; those are handled as the
+    /// user chose (asked the first time).
+    fn drop_missing(&mut self, list: &[String]) -> Vec<String> {
+        let mut found = Vec::new();
+        let mut missing = Vec::new();
+        let mut offline = Vec::new();
+        for p in list {
+            match media_state(p) {
+                MediaState::Here => found.push(p.clone()),
+                MediaState::Gone => missing.push(p.clone()),
+                MediaState::Offline => offline.push(p.clone()),
+            }
+        }
+        if !missing.is_empty() {
+            self.media_not_found(missing, true);
+        } else if let Some(o) = offline.first() {
+            // USB stick, SD card or network share not there: nothing is
+            // removed, the files are most likely fine.
+            self.notice(tf!("Laufwerk nicht verfügbar: {}", media::display_name(o)));
+        }
+        found
+    }
+
+    /// Played files that are gone. `asked_for`: the user wanted to play
+    /// them just now (always say so); otherwise found by the background
+    /// check (kept ones are only reported once).
+    pub fn media_not_found(&mut self, missing: Vec<String>, asked_for: bool) {
+        let missing: Vec<String> = if asked_for { missing } else { missing.into_iter().filter(|m| !self.data.missing_seen.contains(m)).collect() };
+        if missing.is_empty() {
+            return;
+        }
+        log::info!("{} local file(s) not found", missing.len());
+        match self.data.settings.missing_media {
+            MissingMedia::Ask => {
+                // One dialog for all, also when another dialog is open.
+                for m in missing {
+                    if !self.missing_pending.contains(&m) {
+                        self.missing_pending.push(m);
+                    }
+                }
+            }
+            MissingMedia::Remove => {
+                self.forget_media(&missing);
+                self.notice(if missing.len() == 1 {
+                    tf!("„{}“ nicht mehr gefunden – entfernt", media::display_name(&missing[0]))
+                } else {
+                    tf!("{} Medien nicht mehr gefunden – entfernt", missing.len())
+                });
+            }
+            MissingMedia::Keep => {
+                self.notice(if missing.len() == 1 {
+                    tf!("„{}“ nicht mehr gefunden", media::display_name(&missing[0]))
+                } else {
+                    tf!("{} Medien nicht mehr gefunden", missing.len())
+                });
+                self.remember_missing(&missing);
+            }
+        }
+    }
+
+    /// Kept although gone: the background check stays quiet about them.
+    pub fn remember_missing(&mut self, paths: &[String]) {
+        for p in paths {
+            if !self.data.missing_seen.contains(p) {
+                self.data.missing_seen.push(p.clone());
+            }
+        }
+        self.mark_dirty();
+    }
+
+    /// Shows the "not found" question once no other dialog is open, and
+    /// takes the background check's results.
+    pub fn missing_tick(&mut self) {
+        if let Some(rx) = &self.missing_rx {
+            if let Ok(gone) = rx.try_recv() {
+                self.missing_rx = None;
+                // Files that are back no longer count as reported.
+                let before = self.data.missing_seen.len();
+                self.data.missing_seen.retain(|p| media_state(p) != MediaState::Here);
+                if self.data.missing_seen.len() != before {
+                    self.mark_dirty();
+                }
+                self.media_not_found(gone, false);
+            }
+        }
+        if !self.missing_pending.is_empty() && self.dialog.is_none() {
+            self.dialog = Some(Dialog::MissingMedia(std::mem::take(&mut self.missing_pending)));
+        }
+    }
+
+    /// Looks in the background which played local files are gone.
+    pub fn start_missing_check(&mut self, ctx: &egui::Context) {
+        let paths: Vec<String> = self.data.history.iter().filter(|h| !h.live).map(|h| h.path.clone()).collect();
+        let (tx, rx) = std::sync::mpsc::channel();
+        let ctx = ctx.clone();
+        std::thread::Builder::new()
+            .name("missing-check".into())
+            .spawn(move || {
+                let gone: Vec<String> = paths.into_iter().filter(|p| media_state(p) == MediaState::Gone).collect();
+                let _ = tx.send(gone);
+                ctx.request_repaint();
+            })
+            .ok();
+        self.missing_rx = Some(rx);
+    }
+
+    /// Takes files out of history, playlists, pins and their saved extras.
+    pub fn forget_media(&mut self, paths: &[String]) {
+        let gone = |p: &str| paths.iter().any(|x| x == p);
+        self.data.history.retain(|h| !gone(&h.path));
+        for pl in &mut self.data.playlists {
+            pl.items.retain(|i| !gone(i));
+        }
+        self.data.pins.retain(|p| !matches!(&p.target, crate::config::PinTarget::File(f) if gone(f)));
+        for p in paths {
+            self.data.sub_map.remove(p);
+            self.data.bookmarks.remove(p);
+        }
+        self.mark_dirty();
+    }
+
     pub fn dialog_open_files(&mut self) {
-        let mut d = rfd::FileDialog::new().set_title(t!("Medien öffnen"));
-        let mut all: Vec<&str> = media::VIDEO_EXT.to_vec();
-        all.extend_from_slice(media::AUDIO_EXT);
-        all.extend_from_slice(media::PLAYLIST_EXT);
-        d = d.add_filter(t!("Medien"), &all).add_filter("Video", media::VIDEO_EXT).add_filter("Audio", media::AUDIO_EXT).add_filter(t!("Alle Dateien"), &["*"]);
-        if let Some(dir) = self.current_folder() {
-            d = d.set_directory(dir);
-        }
-        if let Some(files) = d.pick_files() {
-            self.open_paths(files.into_iter().map(|p| p.to_string_lossy().to_string()).collect());
-        }
+        self.pick(crate::pick::Pick::OpenFiles);
     }
 
     pub fn dialog_open_folder(&mut self) {
-        if let Some(dir) = rfd::FileDialog::new().set_title(t!("Ordner öffnen")).pick_folder() {
-            self.open_paths(vec![dir.to_string_lossy().to_string()]);
-        }
+        self.pick(crate::pick::Pick::OpenFolder);
     }
 
     pub fn dialog_add_to_queue(&mut self) {
-        let mut all: Vec<&str> = media::VIDEO_EXT.to_vec();
-        all.extend_from_slice(media::AUDIO_EXT);
-        if let Some(files) = rfd::FileDialog::new().add_filter(t!("Medien"), &all).add_filter(t!("Alle Dateien"), &["*"]).pick_files() {
-            let v: Vec<String> = files.into_iter().map(|p| p.to_string_lossy().to_string()).collect();
-            self.enqueue(&v);
-        }
+        self.pick(crate::pick::Pick::QueueFiles);
     }
 
     pub fn open_clipboard(&mut self) {
@@ -655,17 +815,9 @@ impl App {
         self.open_paths(items);
     }
 
+    #[allow(dead_code)]
     pub fn dialog_add_subtitle_file(&mut self) {
-        let mut d = rfd::FileDialog::new().add_filter(t!("Untertitel"), media::SUB_EXT);
-        if let Some(dir) = self.current_folder() {
-            d = d.set_directory(dir);
-        }
-        if let Some(f) = d.pick_file() {
-            if let Some(p) = &self.player {
-                p.sub_add(&f.to_string_lossy(), true);
-            }
-            self.osd(tf!("Untertitel geladen: {}", media::display_name(&f.to_string_lossy())));
-        }
+        self.pick(crate::pick::Pick::Subtitle);
     }
 
     // ------------------------------------------------------------ actions
@@ -1288,20 +1440,41 @@ impl App {
     }
 
     fn add_history(&mut self, path: &str) {
-        if !self.data.settings.remember_history || path.is_empty() {
+        // fdclose://N (Android file without a path) only opens once.
+        if !self.data.settings.remember_history || path.is_empty() || path.starts_with("fd://") || path.starts_with("fdclose://") {
             return;
         }
         let title = self.player.as_ref().map(|p| p.st.media_title.clone()).unwrap_or_default();
-        let audio_only = media::is_audio(path);
+        let radio = self.radio_urls.contains(path);
+        let live = radio || self.live_urls.contains(path);
+        let logo = self.stream_logos.get(path).cloned();
+        let audio_only = radio || media::is_audio(path);
         let now = config::now_secs();
         if let Some(h) = self.data.history.iter_mut().find(|h| h.path == path) {
             h.last_played = now;
             if !title.is_empty() {
                 h.title = title;
             }
-            if h.finished {
+            if live {
+                h.live = true;
+                h.audio_only = radio;
+            }
+            if logo.is_some() {
+                h.logo = logo;
+            }
+            if h.finished || h.live {
                 h.finished = false;
                 h.position = 0.0;
+            }
+            // Played again from the history after a restart: the player
+            // still knows it is radio and shows the logo.
+            if h.live {
+                if h.audio_only {
+                    self.radio_urls.insert(path.to_string());
+                }
+                if let Some(l) = &h.logo {
+                    self.stream_logos.insert(path.to_string(), l.clone());
+                }
             }
         } else {
             self.data.history.push(HistoryEntry {
@@ -1312,6 +1485,8 @@ impl App {
                 last_played: now,
                 finished: false,
                 audio_only,
+                live,
+                logo,
             });
         }
         let limit = self.data.settings.history_limit.max(10);
@@ -1333,6 +1508,10 @@ impl App {
             return;
         }
         if let Some(h) = self.data.history.iter_mut().find(|h| h.path == path) {
+            // Live: the "duration" is only what is buffered.
+            if h.live {
+                return;
+            }
             h.position = t;
             if d > 0.0 {
                 h.duration = d;
@@ -1502,6 +1681,8 @@ impl App {
             // Keep the screen on while something plays; let it sleep after.
             let playing = self.player.as_ref().is_some_and(|p| p.st.has_media() && !p.st.paused);
             crate::platform::android::keep_screen_on(playing);
+            self.poll_pick(ctx);
+            self.android_storage_tick(ctx);
         }
 
         if self.last_history.elapsed() > Duration::from_secs(3) {
@@ -1703,5 +1884,78 @@ impl eframe::App for App {
         if let Some(v) = &self.video {
             v.destroy(gl);
         }
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+pub enum MediaState {
+    /// There, or not a local file (stream, Plex, ...).
+    Here,
+    /// The drive is there but the file is not: moved or deleted.
+    Gone,
+    /// The whole drive is missing (USB stick, SD card, network share).
+    Offline,
+}
+
+/// Whether a played local file can still be reached.
+pub fn media_state(path: &str) -> MediaState {
+    if path.is_empty() || media::is_url(path) || path.starts_with("fd://") || path.starts_with("fdclose://") {
+        return MediaState::Here;
+    }
+    let p = std::path::Path::new(path);
+    if p.exists() {
+        return MediaState::Here;
+    }
+    if volume_root(p).is_some_and(|r| r.exists()) { MediaState::Gone } else { MediaState::Offline }
+}
+
+/// The drive a path lives on: `E:\`, `\\server\share\`, `/storage/1234-ABCD`,
+/// `/storage/emulated/0`.
+fn volume_root(p: &std::path::Path) -> Option<std::path::PathBuf> {
+    use std::path::Component;
+    let mut it = p.components();
+    match it.next()? {
+        Component::Prefix(pre) => {
+            let mut r = std::path::PathBuf::from(pre.as_os_str());
+            r.push(std::path::MAIN_SEPARATOR_STR);
+            Some(r)
+        }
+        Component::RootDir => {
+            let parts: Vec<Component> = it.take(3).collect();
+            match parts.as_slice() {
+                [Component::Normal(a), Component::Normal(b), rest @ ..] if a.to_str() == Some("storage") => {
+                    let mut r = std::path::PathBuf::from("/storage").join(b);
+                    if b.to_str() == Some("emulated") {
+                        if let Some(Component::Normal(u)) = rest.first() {
+                            r.push(u);
+                        }
+                    }
+                    Some(r)
+                }
+                _ => Some(std::path::PathBuf::from("/")),
+            }
+        }
+        _ => None,
+    }
+}
+
+#[cfg(test)]
+mod missing_tests {
+    use super::{MediaState, media_state};
+
+    #[test]
+    fn gone_vs_offline() {
+        assert_eq!(media_state("https://example.com/a.mp4"), MediaState::Here);
+        assert_eq!(media_state("fdclose://12"), MediaState::Here);
+        let dir = std::env::temp_dir();
+        assert_eq!(media_state(&dir.join("velour-surely-missing-123.mp4").to_string_lossy()), MediaState::Gone);
+        #[cfg(windows)]
+        {
+            // A drive letter that is not mounted: the file may be fine.
+            let free = ('J'..='Z').find(|c| !std::path::Path::new(&format!("{c}:\\")).exists()).unwrap();
+            assert_eq!(media_state(&format!(r"{free}:\Filme\a.mp4")), MediaState::Offline);
+        }
+        assert_eq!(super::volume_root(std::path::Path::new("/storage/1234-ABCD/Movies/a.mp4")), Some("/storage/1234-ABCD".into()));
+        assert_eq!(super::volume_root(std::path::Path::new("/storage/emulated/0/Movies/a.mp4")), Some("/storage/emulated/0".into()));
     }
 }
