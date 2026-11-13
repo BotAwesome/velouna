@@ -7,7 +7,7 @@ section becomes the text of its GitHub release and the "What's new" dialog.
 
 ### Android
 - Velour asks for access to your videos and music, so the library finds them; if you said no,
-  a card in Videos and Music and *Settings → Library* let you allow it later
+  a card in Videos and Music and "Settings → Library" let you allow it later
 - "Open file", "Open folder", adding to the queue, subtitles, library folders and playlists use
   the Android file picker
 - A player in the notification shade and on the lock screen with previous, play/pause and next;
@@ -17,7 +17,7 @@ section becomes the text of its GitHub release and the "What's new" dialog.
 
 ### Library
 - When a played file is gone, Velour asks once whether to remove it from the history and
-  lists or keep it, and remembers the answer (*Settings → Library → Missing media*). After
+  lists or keep it, and remembers the answer ("Settings → Library → Missing media"). After
   that it only tells you briefly. A missing USB stick, SD card or network drive removes nothing
 - TV channels and radio stations show as live in "Recently played" instead of with a progress
 
