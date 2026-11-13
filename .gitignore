@@ -5,3 +5,6 @@
 /installer/stage
 /dist
 transscript.txt
+
+# Demo media lives on the VPS, not in the repo
+docs/demo/media/
