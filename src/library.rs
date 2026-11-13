@@ -27,6 +27,12 @@ pub enum LibLoc {
     Recent,
     Folder(PathBuf),
     Plex(PlexLoc),
+    /// Public TV (iptv-org): languages, or the channels of one language
+    /// (code, label).
+    Tv(Option<(String, String)>),
+    /// Public radio (radio-browser.info): languages, or the stations of one
+    /// language (API name, label).
+    Radio(Option<(String, String)>),
 }
 
 /// Places inside the Plex part of the library.
@@ -60,6 +66,8 @@ impl LibLoc {
             LibLoc::Playlists(_) => 4,
             LibLoc::Recent => 5,
             LibLoc::Plex(_) => 6,
+            LibLoc::Tv(_) => 7,
+            LibLoc::Radio(_) => 8,
         }
     }
 }
@@ -218,6 +226,10 @@ impl LibraryState {
                 MusicView::Album(a) | MusicView::Artist(a) | MusicView::Genre(a) => a.clone(),
             },
             LibLoc::Network => t!("Netzwerk").into(),
+            LibLoc::Tv(None) => t!("TV-Sender").into(),
+            LibLoc::Tv(Some((_, label))) => label.clone(),
+            LibLoc::Radio(None) => t!("Radiosender").into(),
+            LibLoc::Radio(Some((_, label))) => label.clone(),
             LibLoc::Playlists(None) => "Playlists".into(),
             LibLoc::Playlists(Some(i)) => data.playlists.get(*i).map(|p| p.name.clone()).unwrap_or_default(),
             LibLoc::Recent => t!("Zuletzt gespielt").into(),
@@ -268,6 +280,18 @@ impl LibraryState {
             LibLoc::Playlists(Some(_)) => {
                 v.push(("Playlists".into(), LibLoc::Playlists(None)));
                 v.push((self.title(data), self.loc.clone()));
+            }
+            LibLoc::Tv(sel) => {
+                v.push((t!("TV-Sender").into(), LibLoc::Tv(None)));
+                if sel.is_some() {
+                    v.push((self.title(data), self.loc.clone()));
+                }
+            }
+            LibLoc::Radio(sel) => {
+                v.push((t!("Radiosender").into(), LibLoc::Radio(None)));
+                if sel.is_some() {
+                    v.push((self.title(data), self.loc.clone()));
+                }
             }
             LibLoc::Folder(p) => {
                 if let Some(parent) = p.parent() {

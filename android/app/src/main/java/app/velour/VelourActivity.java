@@ -57,6 +57,26 @@ public class VelourActivity extends NativeActivity {
     }
 
     /**
+     * Space in px taken by system bars, display cutout and keyboard:
+     * {left, top, right, bottom}. From the window metrics (API 30+), which
+     * follow a rotation right away; the decor view's root insets, read from
+     * the native thread, can stay at the old orientation.
+     */
+    @SuppressWarnings("deprecation")
+    public int[] getSafeInsets() {
+        WindowInsets root = getWindow().getDecorView().getRootWindowInsets();
+        if (Build.VERSION.SDK_INT >= 30) {
+            WindowInsets wi = getWindowManager().getCurrentWindowMetrics().getWindowInsets();
+            android.graphics.Insets s = wi.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+            int bottom = s.bottom;
+            if (root != null) bottom = Math.max(bottom, root.getInsets(WindowInsets.Type.ime()).bottom);
+            return new int[] {s.left, s.top, s.right, bottom};
+        }
+        if (root == null) return new int[] {0, 0, 0, 0};
+        return new int[] {root.getSystemWindowInsetLeft(), root.getSystemWindowInsetTop(), root.getSystemWindowInsetRight(), root.getSystemWindowInsetBottom()};
+    }
+
+    /**
      * Width in px of the left/right edge strips the system uses for its back
      * gesture (0 with button navigation): {left, right}.
      */

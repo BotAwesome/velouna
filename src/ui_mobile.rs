@@ -304,7 +304,9 @@ impl App {
         let t = self.t;
         let sec = self.lib.loc.section();
         for (icon, label, loc, s) in [
-            (ph::BROADCAST, t!("Netzwerk"), LibLoc::Network, 3u8),
+            (ph::TELEVISION, t!("TV-Sender"), LibLoc::Tv(None), 7u8),
+            (ph::RADIO, t!("Radiosender"), LibLoc::Radio(None), 8),
+            (ph::BROADCAST, t!("Netzwerk"), LibLoc::Network, 3),
             (ph::PLAYLIST, "Playlists", LibLoc::Playlists(None), 4),
             (ph::CLOCK_COUNTER_CLOCKWISE, t!("Zuletzt gespielt"), LibLoc::Recent, 5),
         ] {
@@ -332,8 +334,10 @@ impl App {
         let Some(st) = self.player.as_ref().map(|p| p.st.clone()) else { return };
         let p = ui.painter().clone();
         let open = ui.interact(r, Id::new("m_mini"), Sense::click());
-        if st.duration > 0.0 {
-            let f = (st.time / st.duration).clamp(0.0, 1.0) as f32;
+        // Radio is live: a full line instead of the buffer position.
+        let radio = self.radio_urls.contains(&st.path);
+        if radio || st.duration > 0.0 {
+            let f = if radio { 1.0 } else { (st.time / st.duration).clamp(0.0, 1.0) as f32 };
             p.rect_filled(Rect::from_min_size(r.min, vec2(r.width() * f, 2.0)), CornerRadius::ZERO, t.accent);
         }
         let th = r.height() - 16.0;
@@ -344,7 +348,17 @@ impl App {
                 v.paint(&p, thumb);
             }
         } else {
-            widgets::draw_logo(&p, thumb.shrink(th * 0.2), t.accent);
+            let logo = self.stream_logos.get(&st.path).cloned().and_then(|u| self.logos.get(&u, || u.clone()));
+            match logo {
+                Some(img) => {
+                    p.rect_filled(thumb, CornerRadius::same(theme::R), Color32::from_gray(235));
+                    let inner = thumb.shrink(th * 0.1);
+                    let k = (inner.width() / img.size.x).min(inner.height() / img.size.y);
+                    let fit = Rect::from_center_size(inner.center(), img.size * k);
+                    p.image(img.id, fit, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::from_white_alpha((img.alpha * 255.0) as u8));
+                }
+                None => widgets::draw_logo(&p, thumb.shrink(th * 0.2), t.accent),
+            }
         }
         let btn = mm.icon_btn;
         let play = Rect::from_center_size(pos2(r.right() - 10.0 - btn * 1.5, r.center().y), vec2(btn, btn));
@@ -352,7 +366,11 @@ impl App {
         let tx = thumb.right() + 12.0;
         let tw = play.left() - tx - 6.0;
         widgets::painter_text_trunc(&p, pos2(tx, r.center().y - 18.0), &st.media_title, theme::semibold(14.0), t.text, tw);
-        let sub = if st.paused { t!("Pausiert") } else { t!("Wird abgespielt") };
+        let sub = match st.now_playing() {
+            Some(song) if !st.paused => song,
+            _ if st.paused => t!("Pausiert"),
+            _ => t!("Wird abgespielt"),
+        };
         widgets::painter_text_trunc(&p, pos2(tx, r.center().y + 2.0), sub, FontId::proportional(12.0), t.text_dim, tw);
         if touch_icon(ui, play, if st.paused { ph::PLAY } else { ph::PAUSE }, &t, false).clicked() {
             if let Some(pl) = &self.player {

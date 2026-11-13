@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Velour">
+  <g fill="#D83F5C">
+    <path d="M12 14Q27 52 46 82L50 82Q39 47 31 14Z"/>
+    <path d="M84 14Q69 52 50 82L46 82Q57 47 65 14Z"/>
+  </g>
+  <g fill="none" stroke="#A02E44" stroke-width="2.2" stroke-linecap="round">
+    <path d="M21 15Q32 48 47 80"/>
+    <path d="M75 15Q64 48 49 80"/>
+  </g>
+</svg>

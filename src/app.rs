@@ -78,6 +78,8 @@ pub enum Dialog {
     Update,
     /// Changelog after an update (markdown).
     WhatsNew(String),
+    /// Program guide of a TV channel.
+    TvGuide { title: String, country: String, keys: Vec<String> },
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -248,6 +250,18 @@ pub struct App {
     pub px: crate::ui_plex::PlexUi,
     /// In-app updates from GitHub releases.
     pub update: crate::update::Updater,
+    /// Public TV channel list (iptv-org), loaded on first use.
+    pub tv: crate::iptv::Tv,
+    /// Program guides for public TV, per country.
+    pub epg: crate::epg::Epg,
+    /// Public radio directory.
+    pub radio: crate::radio::Radio,
+    /// Radio station logos.
+    pub logos: crate::plex::images::Images,
+    /// Stream URL -> logo URL of radio stations put in the queue.
+    pub stream_logos: HashMap<String, String>,
+    /// Stream URLs of radio stations put in the queue (live, no end).
+    pub radio_urls: std::collections::HashSet<String>,
 }
 
 fn init_mpv(s: &Settings) -> Result<Arc<Mpv>, String> {
@@ -328,6 +342,10 @@ impl App {
         let tools = MediaTools::new(ctx.clone());
         let bindings = Bindings::from_overrides(&data.hotkeys);
         let mut lib = LibraryState::new();
+        // Phones start with the list (the toolbar button switches to tiles).
+        if cfg!(target_os = "android") {
+            lib.view = crate::library::ViewMode::List;
+        }
         if data.settings.scan_on_start {
             lib.start_music_scan(&data, &ctx);
         }
@@ -404,6 +422,12 @@ impl App {
             prev_has_media: false,
             mob: Default::default(),
             update: Default::default(),
+            tv: crate::iptv::Tv::new(ctx.clone()),
+            epg: crate::epg::Epg::new(ctx.clone()),
+            radio: crate::radio::Radio::new(ctx.clone()),
+            logos: crate::plex::images::Images::web(ctx.clone(), "logo_img", 192),
+            stream_logos: HashMap::new(),
+            radio_urls: Default::default(),
             data,
         };
         app.apply_sub_style_from_settings();
@@ -563,7 +587,10 @@ impl App {
         } else {
             p.set_pause(false);
         }
-        self.view = View::Player;
+        // Music stays in the library (mini player); there is nothing to watch.
+        if !media::is_audio(&list[start]) {
+            self.view = View::Player;
+        }
     }
 
     pub fn enqueue(&mut self, list: &[String]) {
@@ -1513,7 +1540,11 @@ impl App {
             self.rebuild_theme(ctx);
         }
 
-        if !self.launch_files.is_empty() && self.player.is_some() {
+        // Files from the command line wait for mpv's render context (made at
+        // the end of the first frame): opened before it, a video plays
+        // without a picture.
+        let video_ready = self.video.as_ref().is_none_or(|v| v.ready());
+        if !self.launch_files.is_empty() && self.player.is_some() && video_ready {
             let files = std::mem::take(&mut self.launch_files);
             self.open_paths(files);
         }
@@ -1612,6 +1643,7 @@ impl App {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        self.logos.begin_frame(ctx);
         // Maximized only once the first frame is painted and the window is
         // shown (see `run_desktop`); it already has the work area's size.
         #[cfg(not(target_os = "android"))]

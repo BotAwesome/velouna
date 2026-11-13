@@ -200,31 +200,13 @@ pub fn set_gesture_exclusion(r: Option<[i32; 4]>) {
 /// System bars, display cutout and soft keyboard in pixels:
 /// [left, top, right, bottom].
 pub fn system_insets_px() -> Option<[f32; 4]> {
+    // VelourActivity.getSafeInsets: window metrics, so a rotation shows up
+    // right away (the keyboard comes from the decor view's insets).
     with_activity(|env, activity| {
-        let window = env.call_method(activity, "getWindow", "()Landroid/view/Window;", &[])?.l()?;
-        let decor = env.call_method(&window, "getDecorView", "()Landroid/view/View;", &[])?.l()?;
-        let wi = env.call_method(&decor, "getRootWindowInsets", "()Landroid/view/WindowInsets;", &[])?.l()?;
-        if wi.is_null() {
-            return Ok([0.0; 4]);
-        }
-        let sdk = env.get_static_field("android/os/Build$VERSION", "SDK_INT", "I")?.i()?;
-        if sdk >= 30 {
-            let bars = env.call_static_method("android/view/WindowInsets$Type", "systemBars", "()I", &[])?.i()?;
-            let cut = env.call_static_method("android/view/WindowInsets$Type", "displayCutout", "()I", &[])?.i()?;
-            // The soft keyboard too, so the layout shrinks above it.
-            let ime = env.call_static_method("android/view/WindowInsets$Type", "ime", "()I", &[])?.i()?;
-            let ins = env.call_method(&wi, "getInsets", "(I)Landroid/graphics/Insets;", &[JValue::Int(bars | cut | ime)])?.l()?;
-            let mut v = [0.0; 4];
-            for (i, f) in ["left", "top", "right", "bottom"].iter().enumerate() {
-                v[i] = env.get_field(&ins, *f, "I")?.i()? as f32;
-            }
-            Ok(v)
-        } else {
-            let mut v = [0.0; 4];
-            for (i, m) in ["getSystemWindowInsetLeft", "getSystemWindowInsetTop", "getSystemWindowInsetRight", "getSystemWindowInsetBottom"].iter().enumerate() {
-                v[i] = env.call_method(&wi, *m, "()I", &[])?.i()? as f32;
-            }
-            Ok(v)
-        }
+        let arr = env.call_method(activity, "getSafeInsets", "()[I", &[])?.l()?;
+        let arr = jni::objects::JIntArray::from(arr);
+        let mut v = [0i32; 4];
+        env.get_int_array_region(&arr, 0, &mut v)?;
+        Ok(v.map(|x| x as f32))
     })
 }

@@ -469,6 +469,35 @@ pub struct Stream {
     pub url: String,
 }
 
+/// A radio station (radio-browser.info) the user starred.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct RadioFavorite {
+    pub name: String,
+    pub url: String,
+    pub uuid: String,
+    /// "Deutschland · news, pop · MP3 128 kbps" at the time it was added.
+    pub sub: String,
+    pub favicon: String,
+}
+
+/// A public TV channel (iptv-org) the user starred; everything needed to
+/// play it is kept here, so it works before the channel list has loaded.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct TvFavorite {
+    pub title: String,
+    pub url: String,
+    pub user_agent: Option<String>,
+    pub referrer: Option<String>,
+    /// "Deutschland · Allgemein · 720p" at the time it was added.
+    pub sub: String,
+    /// For the program guide.
+    pub country: Option<String>,
+    pub epg_keys: Vec<String>,
+    pub logo: String,
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Playlist {
     pub name: String,
@@ -594,6 +623,10 @@ pub struct Data {
     pub eq_custom: Vec<f64>,
     pub stream_defaults_added: bool,
     pub plex: PlexConfig,
+    pub tv_favorites: Vec<TvFavorite>,
+    pub radio_favorites: Vec<RadioFavorite>,
+    /// The radio tile replaced the old SomaFM example stream.
+    pub radio_added: bool,
 }
 
 /// Persistent Plex identity. The token itself lives in the Windows credential store.
@@ -644,11 +677,18 @@ impl Data {
                 name: "Öffentliche TV-Sender (iptv-org)".into(),
                 url: "https://iptv-org.github.io/iptv/index.m3u".into(),
             });
-            d.streams.push(Stream {
-                name: "SomaFM Groove Salad (Radio)".into(),
-                url: "https://ice1.somafm.com/groovesalad-128-mp3".into(),
-            });
             d.stream_defaults_added = true;
+        }
+        // Public radio replaces the SomaFM example stream (in its place, if
+        // it is still there).
+        if !d.radio_added {
+            let radio = Stream { name: "Radiosender (radio-browser.info)".into(), url: crate::radio::HOME_URL.into() };
+            match d.streams.iter().position(|s| s.url == "https://ice1.somafm.com/groovesalad-128-mp3") {
+                Some(i) => d.streams[i] = radio,
+                None if !d.streams.iter().any(|s| crate::radio::is_radio_browser(&s.url)) => d.streams.push(radio),
+                None => {}
+            }
+            d.radio_added = true;
         }
         // Default folders from before the rename still carry the working title.
         let s = &mut d.settings;

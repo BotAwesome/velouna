@@ -12,7 +12,9 @@ use eframe::egui::{
     Ui, pos2, vec2,
 };
 use egui_phosphor::regular as ph;
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 #[derive(Clone)]
 enum Kind {
@@ -23,6 +25,36 @@ enum Kind {
     Go(LibLoc),
     NewStream,
     NewPlaylist,
+    /// Public TV channel (index into the iptv catalog).
+    Channel(usize),
+    /// Starred TV channel (index into `data.tv_favorites`).
+    Fav(usize),
+    /// Radio station from the directory.
+    Radio(Arc<crate::radio::Station>),
+    /// Starred radio station (index into `data.radio_favorites`).
+    RadioFav(usize),
+    /// Status line, does nothing.
+    Info,
+    TvRetry,
+}
+
+/// "Jetzt: Tatort · bis 21:45 · <rest>" when the guide knows the channel.
+fn with_now(guides: &HashMap<String, Arc<crate::epg::Guide>>, country: Option<&str>, keys: &[String], rest: &str) -> String {
+    let now = crate::epg::now();
+    let cur = country.and_then(|c| guides.get(c)).and_then(|g| g.lookup(keys)).and_then(|p| crate::epg::now_next(p, now));
+    match cur {
+        Some((p, _)) if !p.title.is_empty() => {
+            let head = tf!("Jetzt: {} · bis {}", p.title, crate::epg::clock(p.stop));
+            if rest.is_empty() { head } else { format!("{head} · {rest}") }
+        }
+        _ => rest.to_string(),
+    }
+}
+
+/// The built-in iptv-org list opens the language browser instead of
+/// loading thousands of channels into the queue.
+fn is_iptv_org(url: &str) -> bool {
+    url.starts_with("https://iptv-org.github.io/iptv/index")
 }
 
 #[derive(Clone)]
@@ -48,6 +80,10 @@ enum MenuAct {
     Watched(bool),
     Explorer,
     Remove,
+    /// TV channel: star / unstar.
+    Favorite,
+    /// TV channel: program guide.
+    Guide,
 }
 
 impl App {
@@ -211,7 +247,8 @@ impl App {
             LibLoc::Music(view) => self.music_entries(view),
             LibLoc::Network => {
                 let mut e = vec![Entry { kind: Kind::NewStream, title: t!("Netzwerkstream hinzufügen").into(), sub: String::new(), icon: ph::PLUS }];
-                e.extend(self.data.streams.iter().enumerate().map(|(i, s)| Entry {
+                // TV and radio have their own pages.
+                e.extend(self.data.streams.iter().enumerate().filter(|(_, s)| !is_iptv_org(&s.url) && !crate::radio::is_radio_browser(&s.url)).map(|(i, s)| Entry {
                     kind: Kind::Stream(i),
                     title: crate::i18n::tr(&s.name).to_string(),
                     sub: s.url.clone(),
@@ -241,6 +278,8 @@ impl App {
                 });
                 e
             }
+            LibLoc::Tv(sel) => self.tv_entries(sel.as_ref().map(|s| s.0.as_str())),
+            LibLoc::Radio(sel) => self.radio_entries(sel.as_ref().map(|s| s.0.as_str())),
             LibLoc::Recent => {
                 let mut h = self.data.history.clone();
                 h.sort_by(|a, b| b.last_played.cmp(&a.last_played));
@@ -259,6 +298,321 @@ impl App {
             v.retain(|e| e.title.to_lowercase().contains(&q) || matches!(e.kind, Kind::NewStream | Kind::NewPlaylist));
         }
         v
+    }
+
+    /// Languages (with a search over all channels), or one language's channels.
+    fn tv_entries(&mut self, lang: Option<&str>) -> Vec<Entry> {
+        use crate::iptv::{FAVORITES, TvState};
+        // Favorites need no channel list.
+        if lang == Some(FAVORITES) {
+            let countries: Vec<String> = self.data.tv_favorites.iter().filter_map(|f| f.country.clone()).collect();
+            let guides = self.tv_guides(countries, 8);
+            return self
+                .data
+                .tv_favorites
+                .iter()
+                .enumerate()
+                .map(|(i, f)| Entry {
+                    kind: Kind::Fav(i),
+                    title: f.title.clone(),
+                    sub: with_now(&guides, f.country.as_deref(), &f.epg_keys, &f.sub),
+                    icon: ph::STAR,
+                })
+                .collect();
+        }
+        let mut head = vec![];
+        if lang.is_none() && !self.data.tv_favorites.is_empty() && self.lib.search.trim().is_empty() {
+            let n = self.data.tv_favorites.len();
+            head.push(Entry {
+                kind: Kind::Go(LibLoc::Tv(Some((FAVORITES.into(), t!("TV-Favoriten").into())))),
+                title: t!("TV-Favoriten").into(),
+                sub: tf!("{n} Sender"),
+                icon: ph::STAR,
+            });
+        }
+        let info = |title: String, sub: String| Entry { kind: Kind::Info, title, sub, icon: ph::INFO };
+        let cat = match self.tv.state() {
+            TvState::Ready(c) => c.clone(),
+            TvState::Failed(e) => {
+                head.push(info(t!("Senderliste konnte nicht geladen werden").into(), e.clone()));
+                head.push(Entry { kind: Kind::TvRetry, title: t!("Erneut versuchen").into(), sub: String::new(), icon: ph::ARROW_CLOCKWISE });
+                return head;
+            }
+            _ => {
+                head.push(info(t!("Senderliste wird geladen …").into(), "iptv-org".into()));
+                return head;
+            }
+        };
+        let q = self.lib.search.trim().to_lowercase();
+        let ids: Vec<usize> = match lang {
+            Some(code) => cat.by_lang.get(code).cloned().unwrap_or_default(),
+            // Searching on the language page finds channels in every language.
+            None if !q.is_empty() => {
+                let mut seen = std::collections::HashSet::new();
+                (0..cat.channels.len())
+                    .filter(|&i| cat.channels[i].title.to_lowercase().contains(&q) && seen.insert(cat.channels[i].url.as_str()))
+                    .take(500)
+                    .collect()
+            }
+            None => vec![],
+        };
+        // Program guides of the countries most of these channels come from.
+        let guides = self.tv_guides(ids.iter().filter_map(|&i| cat.channels[i].country.clone()).collect(), 3);
+        let favs: std::collections::HashSet<&str> = self.data.tv_favorites.iter().map(|f| f.url.as_str()).collect();
+        let channel = |i: usize| {
+            let c = &cat.channels[i];
+            Entry {
+                kind: Kind::Channel(i),
+                title: c.title.clone(),
+                sub: with_now(&guides, c.country.as_deref(), &c.epg_keys, &cat.subtitle(c)),
+                icon: if favs.contains(c.url.as_str()) { ph::STAR } else { ph::TELEVISION_SIMPLE },
+            }
+        };
+        match lang {
+            Some(_) => ids.into_iter().map(channel).collect(),
+            None if !q.is_empty() => ids.into_iter().map(channel).collect(),
+            None => head
+                .into_iter()
+                .chain(cat.languages().into_iter().map(|(code, label, n)| Entry {
+                    kind: Kind::Go(LibLoc::Tv(Some((code, label.clone())))),
+                    title: label,
+                    sub: tf!("{n} Sender"),
+                    icon: ph::TRANSLATE,
+                }))
+                .collect(),
+        }
+    }
+
+    /// Radio: languages (with a search over all stations), one language's
+    /// stations by popularity, or the favorites.
+    fn radio_entries(&mut self, lang: Option<&str>) -> Vec<Entry> {
+        use crate::radio::{FAVORITES, Load};
+        if lang == Some(FAVORITES) {
+            return self
+                .data
+                .radio_favorites
+                .iter()
+                .enumerate()
+                .map(|(i, f)| Entry { kind: Kind::RadioFav(i), title: f.name.clone(), sub: f.sub.clone(), icon: ph::STAR })
+                .collect();
+        }
+        let q = self.lib.search.trim().to_string();
+        let info = |title: String, sub: String| Entry { kind: Kind::Info, title, sub, icon: ph::INFO };
+        let failed = |e: String| {
+            vec![
+                info(t!("Senderliste konnte nicht geladen werden").into(), e),
+                Entry { kind: Kind::TvRetry, title: t!("Erneut versuchen").into(), sub: String::new(), icon: ph::ARROW_CLOCKWISE },
+            ]
+        };
+        let favs: std::collections::HashSet<String> = self.data.radio_favorites.iter().map(|f| f.uuid.clone()).collect();
+        let station = |s: &Arc<crate::radio::Station>| Entry {
+            kind: Kind::Radio(s.clone()),
+            title: s.title(),
+            sub: s.subtitle(),
+            icon: if favs.contains(&s.stationuuid) { ph::STAR } else { ph::RADIO },
+        };
+        let list = |r: Load<crate::radio::Stations>, sub: &str| match r {
+            Load::Ready(v) => v.iter().map(station).collect(),
+            // The search filter keeps entries whose title matches: say what
+            // is loading in the title.
+            Load::Loading => vec![info(format!("{} {}", t!("Senderliste wird geladen …"), sub), "radio-browser.info".into())],
+            Load::Failed(e) => failed(e),
+        };
+        match lang {
+            Some(l) => list(self.radio.stations(l), ""),
+            None if !q.is_empty() => list(self.radio.search(&q), &q),
+            None => {
+                let mut v = vec![];
+                if !self.data.radio_favorites.is_empty() {
+                    let n = self.data.radio_favorites.len();
+                    v.push(Entry {
+                        kind: Kind::Go(LibLoc::Radio(Some((FAVORITES.into(), t!("Radio-Favoriten").into())))),
+                        title: t!("Radio-Favoriten").into(),
+                        sub: tf!("{n} Radiosender"),
+                        icon: ph::STAR,
+                    });
+                }
+                match self.radio.languages() {
+                    Load::Ready(langs) => v.extend(langs.iter().map(|l| {
+                        let n = l.count;
+                        Entry { kind: Kind::Go(LibLoc::Radio(Some((l.name.clone(), l.label.clone())))), title: l.label.clone(), sub: tf!("{n} Radiosender"), icon: ph::TRANSLATE }
+                    })),
+                    Load::Loading => v.push(info(t!("Senderliste wird geladen …").into(), "radio-browser.info".into())),
+                    Load::Failed(e) => v.extend(failed(e)),
+                }
+                v
+            }
+        }
+    }
+
+    /// Loaded guides for the `max` most common of `countries` (starting
+    /// downloads as needed).
+    fn tv_guides(&mut self, countries: Vec<String>, max: usize) -> HashMap<String, Arc<crate::epg::Guide>> {
+        let mut count: HashMap<String, usize> = HashMap::new();
+        for c in countries {
+            *count.entry(c).or_default() += 1;
+        }
+        let mut top: Vec<(String, usize)> = count.into_iter().collect();
+        top.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
+        let mut out = HashMap::new();
+        for (c, _) in top.into_iter().take(max) {
+            self.epg.want(&c);
+            if let Some(g) = self.epg.guide(&c) {
+                out.insert(c, g);
+            }
+        }
+        out
+    }
+
+    /// (title, country, guide keys) of a channel or favorite entry.
+    fn tv_guide_target(&self, kind: &Kind) -> Option<(String, String, Vec<String>)> {
+        match kind {
+            Kind::Channel(i) => self.tv.catalog().and_then(|c| {
+                let ch = c.channels.get(*i)?;
+                Some((ch.title.clone(), ch.country.clone()?, ch.epg_keys.clone()))
+            }),
+            Kind::Fav(i) => self.data.tv_favorites.get(*i).and_then(|f| Some((f.title.clone(), f.country.clone()?, f.epg_keys.clone()))),
+            _ => None,
+        }
+    }
+
+    /// (url, mpv options) of a channel or favorite entry.
+    fn tv_item(&self, kind: &Kind) -> Option<(String, String)> {
+        match kind {
+            Kind::Channel(i) => self.tv.catalog().and_then(|c| c.channels.get(*i).map(|c| (c.url.clone(), c.mpv_options()))),
+            Kind::Fav(i) => self.data.tv_favorites.get(*i).map(|f| (f.url.clone(), crate::iptv::favorite_options(f))),
+            Kind::Radio(s) => Some((s.stream_url().to_string(), s.mpv_options())),
+            Kind::RadioFav(i) => self.data.radio_favorites.get(*i).map(|f| (f.url.clone(), crate::radio::favorite_options(f))),
+            _ => None,
+        }
+    }
+
+    /// Notes logo and kind (radio) of a channel / station being queued.
+    fn remember_stream(&mut self, kind: &Kind) {
+        let Some((url, _)) = self.tv_item(kind) else { return };
+        if matches!(kind, Kind::Radio(_) | Kind::RadioFav(_)) {
+            self.radio_urls.insert(url.clone());
+        }
+        if let Some(logo) = self.entry_logo(kind) {
+            self.stream_logos.insert(url, logo);
+        }
+    }
+
+    /// Logo URL of a radio station or TV channel entry.
+    fn entry_logo(&self, kind: &Kind) -> Option<String> {
+        let u = match kind {
+            Kind::Radio(s) => s.favicon.clone(),
+            Kind::RadioFav(i) => self.data.radio_favorites.get(*i)?.favicon.clone(),
+            Kind::Channel(i) => self.tv.catalog()?.channels.get(*i)?.logo.clone()?,
+            Kind::Fav(i) => self.data.tv_favorites.get(*i)?.logo.clone(),
+            Kind::Go(LibLoc::Tv(Some((code, _)))) => crate::flags::for_language(code)?,
+            Kind::Go(LibLoc::Radio(Some((name, _)))) => crate::flags::for_language(self.radio.iso_of(name)?)?,
+            _ => return None,
+        };
+        (u.starts_with("http://") || u.starts_with("https://")).then_some(u)
+    }
+
+    /// Draws a station logo fitted into `r`; false while it is not loaded.
+    fn paint_logo(&mut self, ui: &Ui, url: &str, r: Rect) -> bool {
+        let Some(img) = self.logos.get(url, || url.to_string()) else { return false };
+        let s = img.size;
+        let k = (r.width() / s.x).min(r.height() / s.y);
+        let fit = Rect::from_center_size(r.center(), s * k);
+        egui::Image::new((img.id, fit.size())).tint(Color32::from_white_alpha((img.alpha * 255.0) as u8)).corner_radius(CornerRadius::same(4)).paint_at(ui, fit);
+        true
+    }
+
+    /// Whether a channel / station entry is starred.
+    fn is_favorite(&self, kind: &Kind) -> bool {
+        match kind {
+            Kind::Fav(_) | Kind::RadioFav(_) => true,
+            Kind::Radio(s) => self.data.radio_favorites.iter().any(|f| f.uuid == s.stationuuid),
+            _ => self.tv_item(kind).is_some_and(|(url, _)| self.data.tv_favorites.iter().any(|f| f.url == url)),
+        }
+    }
+
+    /// Stars or unstars a channel / favorite entry.
+    fn toggle_tv_favorite(&mut self, kind: &Kind) {
+        let radio = match kind {
+            Kind::Radio(s) => Some(crate::config::RadioFavorite {
+                name: s.title(),
+                url: s.stream_url().to_string(),
+                uuid: s.stationuuid.clone(),
+                sub: s.subtitle(),
+                favicon: s.favicon.clone(),
+            }),
+            Kind::RadioFav(i) => self.data.radio_favorites.get(*i).cloned(),
+            _ => None,
+        };
+        if let Some(fav) = radio {
+            if let Some(pos) = self.data.radio_favorites.iter().position(|f| f.uuid == fav.uuid && f.url == fav.url) {
+                self.data.radio_favorites.remove(pos);
+                self.osd(tf!("Aus Radio-Favoriten entfernt: {}", fav.name));
+            } else {
+                self.osd(tf!("Zu Radio-Favoriten hinzugefügt: {}", fav.name));
+                self.data.radio_favorites.push(fav);
+            }
+            self.mark_dirty();
+            return;
+        }
+        let fav = match kind {
+            Kind::Channel(i) => match self.tv.catalog() {
+                Some(c) if *i < c.channels.len() => c.favorite(&c.channels[*i]),
+                _ => return,
+            },
+            Kind::Fav(i) => match self.data.tv_favorites.get(*i) {
+                Some(f) => f.clone(),
+                None => return,
+            },
+            _ => return,
+        };
+        if let Some(pos) = self.data.tv_favorites.iter().position(|f| f.url == fav.url) {
+            self.data.tv_favorites.remove(pos);
+            self.osd(tf!("Aus TV-Favoriten entfernt: {}", fav.title));
+        } else {
+            self.osd(tf!("Zu TV-Favoriten hinzugefügt: {}", fav.title));
+            self.data.tv_favorites.push(fav);
+        }
+        self.mark_dirty();
+    }
+
+    /// Plays channels as a queue (the ones around `start`), each with its
+    /// title, user agent and referrer.
+    fn play_tv(&mut self, entries: &[Entry], idx: usize) {
+        // Only the entries around the tapped one: thousands of loadfile
+        // calls would stall, and a window is plenty to zap through.
+        let lo = idx.saturating_sub(150);
+        let hi = (idx + 350).min(entries.len());
+        let mut items = vec![];
+        let mut start = 0;
+        for (n, e) in entries[lo..hi].iter().enumerate() {
+            if let Some(it) = self.tv_item(&e.kind) {
+                if lo + n == idx {
+                    start = items.len();
+                }
+                items.push(it);
+            }
+        }
+        if let Some(Kind::Radio(s)) = entries.get(idx).map(|e| &e.kind) {
+            self.radio.clicked(&s.stationuuid);
+        }
+        for e in &entries[lo..hi] {
+            self.remember_stream(&e.kind);
+        }
+        let Some(p) = &self.player else { return };
+        if items.is_empty() {
+            return;
+        }
+        for (n, (url, opts)) in items.iter().enumerate() {
+            let mode = if n == 0 { "replace" } else { "append" };
+            let _ = p.mpv.command(&["loadfile", url, mode, "-1", opts]);
+        }
+        let _ = p.mpv.set_i64("playlist-pos", start as i64);
+        p.set_pause(false);
+        // Radio plays on in the list (mini player); TV opens the player.
+        if !matches!(entries.get(idx).map(|e| &e.kind), Some(Kind::Radio(_) | Kind::RadioFav(_))) {
+            self.view = View::Player;
+        }
     }
 
     fn entry_files(&self, e: &Entry) -> Vec<String> {
@@ -297,9 +651,19 @@ impl App {
             Kind::Playlist(i) => self.lib.go(LibLoc::Playlists(Some(i))),
             Kind::Stream(i) => {
                 if let Some(s) = self.data.streams.get(i).cloned() {
-                    self.play_list(&[s.url], 0);
+                    if is_iptv_org(&s.url) {
+                        self.lib.go(LibLoc::Tv(None));
+                    } else if crate::radio::is_radio_browser(&s.url) {
+                        self.lib.go(LibLoc::Radio(None));
+                    } else {
+                        self.play_list(&[s.url], 0);
+                    }
                 }
             }
+            Kind::Channel(_) | Kind::Fav(_) | Kind::Radio(_) | Kind::RadioFav(_) => self.play_tv(entries, idx),
+            Kind::TvRetry if matches!(self.lib.loc, LibLoc::Radio(_)) => self.radio.reload(),
+            Kind::TvRetry => self.tv.reload(),
+            Kind::Info => {}
             Kind::File(f) => {
                 let in_recent = self.lib.loc == LibLoc::Recent;
                 if self.data.settings.library_add_folder_to_queue && !in_recent {
@@ -328,6 +692,33 @@ impl App {
 
     fn entry_menu(&self, ui: &mut Ui, e: &Entry, idx: usize, out: &mut Option<Click>) {
         let t = self.t;
+        if matches!(e.kind, Kind::Channel(_) | Kind::Fav(_) | Kind::Radio(_) | Kind::RadioFav(_)) {
+            let starred = self.is_favorite(&e.kind);
+            let radio = matches!(e.kind, Kind::Radio(_) | Kind::RadioFav(_));
+            let fav_label = match (radio, starred) {
+                (false, false) => t!("Zu TV-Favoriten hinzufügen"),
+                (false, true) => t!("Aus TV-Favoriten entfernen"),
+                (true, false) => t!("Zu Radio-Favoriten hinzufügen"),
+                (true, true) => t!("Aus Radio-Favoriten entfernen"),
+            };
+            let items = [
+                (ph::PLAY, t!("Abspielen"), MenuAct::Play),
+                (ph::ARROW_BEND_DOWN_RIGHT, t!("Als Nächstes abspielen"), MenuAct::PlayNext),
+                (ph::QUEUE, t!("Zur Warteschlange hinzufügen"), MenuAct::Enqueue),
+                (ph::STAR, fav_label, MenuAct::Favorite),
+            ];
+            for (icon, label, act) in items {
+                if widgets::menu_item(ui, &t, icon, label, "", false).clicked() {
+                    *out = Some(Click::Menu(act, idx));
+                    ui.close();
+                }
+            }
+            if self.tv_guide_target(&e.kind).is_some() && widgets::menu_item(ui, &t, ph::CALENDAR_BLANK, t!("Programm"), "", false).clicked() {
+                *out = Some(Click::Menu(MenuAct::Guide, idx));
+                ui.close();
+            }
+            return;
+        }
         let playable = matches!(e.kind, Kind::File(_) | Kind::Folder(_) | Kind::Stream(_) | Kind::Playlist(_));
         if playable {
             if widgets::menu_item(ui, &t, ph::PLAY, t!("Abspielen"), "", false).clicked() {
@@ -373,6 +764,31 @@ impl App {
         }
     }
 
+    fn tv_menu(&mut self, act: MenuAct, entries: &[Entry], idx: usize) {
+        let kind = entries[idx].kind.clone();
+        match act {
+            MenuAct::Play => self.play_tv(entries, idx),
+            MenuAct::PlayNext | MenuAct::Enqueue => {
+                self.remember_stream(&kind);
+                let Some((url, opts)) = self.tv_item(&kind) else { return };
+                let Some(p) = &self.player else { return };
+                let next = matches!(act, MenuAct::PlayNext);
+                let mode = if next { "insert-next" } else if p.st.has_media() { "append" } else { "append-play" };
+                let _ = p.mpv.command(&["loadfile", &url, mode, "-1", &opts]);
+                let title = entries[idx].title.clone();
+                self.osd(if next { t!("Wird als Nächstes abgespielt").to_string() } else { tf!("Zur Warteschlange hinzugefügt: {}", title) });
+            }
+            MenuAct::Favorite => self.toggle_tv_favorite(&kind),
+            MenuAct::Guide => {
+                if let Some((title, country, keys)) = self.tv_guide_target(&kind) {
+                    self.epg.want(&country);
+                    self.dialog = Some(Dialog::TvGuide { title, country, keys });
+                }
+            }
+            _ => {}
+        }
+    }
+
     fn handle_click(&mut self, click: Click, entries: &[Entry], stay: bool) {
         match click {
             Click::Open(i) => self.activate(entries, i, stay),
@@ -384,6 +800,10 @@ impl App {
             }
             Click::Menu(act, i) => {
                 let Some(e) = entries.get(i).cloned() else { return };
+                if matches!(e.kind, Kind::Channel(_) | Kind::Fav(_) | Kind::Radio(_) | Kind::RadioFav(_)) {
+                    self.tv_menu(act, entries, i);
+                    return;
+                }
                 let files = self.entry_files(&e);
                 match act {
                     MenuAct::Play => {
@@ -418,6 +838,7 @@ impl App {
                         }
                         _ => {}
                     },
+                    MenuAct::Favorite | MenuAct::Guide => {}
                     MenuAct::Remove => match (&e.kind, self.lib.loc.clone()) {
                         (Kind::Stream(i), _) => {
                             self.data.streams.remove(*i);
@@ -491,9 +912,16 @@ impl App {
                     }
                     if widgets::menu_item(ui, &t, ph::ARROWS_CLOCKWISE, t!("Aktualisieren"), "", false).clicked() {
                         ui.close();
-                        self.lib.refresh();
-                        let ctx = ui.ctx().clone();
-                        self.lib.start_music_scan(&self.data, &ctx);
+                        if matches!(self.lib.loc, LibLoc::Radio(_)) {
+                            self.radio.reload();
+                        } else if matches!(self.lib.loc, LibLoc::Tv(_)) {
+                            self.tv.reload();
+                            self.epg.reload();
+                        } else {
+                            self.lib.refresh();
+                            let ctx = ui.ctx().clone();
+                            self.lib.start_music_scan(&self.data, &ctx);
+                        }
                     }
                     if self.lib.loc == LibLoc::Recent && widgets::menu_item(ui, &t, ph::TRASH, t!("Verlauf leeren"), "", false).clicked() {
                         ui.close();
@@ -511,15 +939,18 @@ impl App {
                 if icon_button(ui, &t, vicon, t!("Ansicht: Raster / Liste"), false).clicked() {
                     self.lib.view = if self.lib.view == ViewMode::Grid { ViewMode::List } else { ViewMode::Grid };
                 }
-                let sresp = icon_button(ui, &t, ph::ARROWS_DOWN_UP, t!("Sortieren"), false);
-                egui::Popup::menu(&sresp).width(220.0).show(|ui| {
-                    for m in SortMode::ALL {
-                        if widgets::menu_item(ui, &t, "", m.label(), "", self.lib.sort == m).clicked() {
-                            self.lib.sort = m;
-                            ui.close();
+                // The TV list has its own order (channel count, then name).
+                if !matches!(self.lib.loc, LibLoc::Tv(_) | LibLoc::Radio(_)) {
+                    let sresp = icon_button(ui, &t, ph::ARROWS_DOWN_UP, t!("Sortieren"), false);
+                    egui::Popup::menu(&sresp).width(220.0).show(|ui| {
+                        for m in SortMode::ALL {
+                            if widgets::menu_item(ui, &t, "", m.label(), "", self.lib.sort == m).clicked() {
+                                self.lib.sort = m;
+                                ui.close();
+                            }
                         }
-                    }
-                });
+                    });
+                }
                 let _ = compact;
             });
         });
@@ -610,6 +1041,8 @@ impl App {
                 (0u8, ph::HOUSE, "Start", LibLoc::Home),
                 (1, ph::FILM_STRIP, "Videos", LibLoc::Videos(None)),
                 (2, ph::MUSIC_NOTES, t!("Musik"), LibLoc::Music(MusicView::Songs)),
+                (7, ph::TELEVISION, t!("TV-Sender"), LibLoc::Tv(None)),
+                (8, ph::RADIO, t!("Radiosender"), LibLoc::Radio(None)),
                 (3, ph::BROADCAST, t!("Netzwerk"), LibLoc::Network),
                 (4, ph::PLAYLIST, "Playlists", LibLoc::Playlists(None)),
                 (5, ph::CLOCK_COUNTER_CLOCKWISE, t!("Zuletzt gespielt"), LibLoc::Recent),
@@ -676,6 +1109,8 @@ impl App {
                     self.lib.go(LibLoc::Playlists(Some(i)));
                 }
             }
+            PinTarget::Stream(url) if is_iptv_org(url) => self.lib.go(LibLoc::Tv(None)),
+            PinTarget::Stream(url) if crate::radio::is_radio_browser(url) => self.lib.go(LibLoc::Radio(None)),
             PinTarget::Stream(url) | PinTarget::File(url) => self.play_list(&[url.clone()], 0),
         }
     }
@@ -701,7 +1136,10 @@ impl App {
         }
         let current = self.current_path();
         let music_tags = matches!(self.lib.loc, LibLoc::Music(_));
-        let grid = self.lib.view == ViewMode::Grid && !compact;
+        // `compact` is the narrow desktop sidebar (no room for tiles) or a
+        // touch screen, where tiles are smaller.
+        let touch = crate::mobile::touch();
+        let grid = self.lib.view == ViewMode::Grid && (!compact || touch);
         if matches!(self.lib.loc, LibLoc::Music(MusicView::Albums) | LibLoc::Music(MusicView::Artists) | LibLoc::Music(MusicView::Genres)) {
             // Make sure all tags get read.
             let files: Vec<String> = self.lib.music_files.iter().map(|p| p.to_string_lossy().to_string()).collect();
@@ -715,8 +1153,11 @@ impl App {
                 ui.label(RichText::new(tf!("Metadaten werden gelesen… ({} von {})", files.len() - pending, files.len())).size(12.0).color(t.text_faint));
             }
         }
+        // On touch a row that senses drags would swallow the swipe and the
+        // list could not scroll; tap and long-press still work with clicks.
+        let row_sense = if crate::mobile::touch() { Sense::click() } else { Sense::click_and_drag() };
         if grid {
-            let card_w = 196.0;
+            let card_w = if touch { 150.0 } else { 196.0 };
             let gap = 14.0;
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let w = ui.available_width();
@@ -728,7 +1169,7 @@ impl App {
                         ui.spacing_mut().item_spacing.x = gap;
                         for (ci, e) in row.iter().enumerate() {
                             let idx = row_i * cols + ci;
-                            let (rect, resp) = ui.allocate_exact_size(vec2(cw, thumb_h + 46.0), Sense::click_and_drag());
+                            let (rect, resp) = ui.allocate_exact_size(vec2(cw, thumb_h + 46.0), row_sense);
                             if !ui.is_rect_visible(rect) {
                                 continue;
                             }
@@ -750,6 +1191,11 @@ impl App {
                                         let pr_r = Rect::from_min_max(pos2(img.left(), img.bottom() - 4.0), img.max);
                                         widgets::progress_line(ui.painter(), pr_r, pr, &t);
                                     }
+                                }
+                            }
+                            if !drew {
+                                if let Some(logo) = self.entry_logo(&e.kind) {
+                                    drew = self.paint_logo(ui, &logo, Rect::from_center_size(img.center(), vec2(thumb_h * 0.7, thumb_h * 0.7)));
                                 }
                             }
                             if !drew {
@@ -780,7 +1226,7 @@ impl App {
                 for idx in range {
                     let e = &entries[idx];
                     let w = ui.available_width();
-                    let (rect, resp) = ui.allocate_exact_size(vec2(w, row_h), Sense::click_and_drag());
+                    let (rect, resp) = ui.allocate_exact_size(vec2(w, row_h), row_sense);
                     let is_cur = matches!(&e.kind, Kind::File(f) if *f == current);
                     if is_cur {
                         ui.painter().rect_filled(rect, CornerRadius::same(theme::R), t.accent_soft);
@@ -801,6 +1247,15 @@ impl App {
                                     }
                                 }
                                 x += th_w + 10.0;
+                                drew = true;
+                            }
+                        }
+                    }
+                    if !drew {
+                        if let Some(logo) = self.entry_logo(&e.kind) {
+                            let side = (row_h - 16.0).min(30.0);
+                            if self.paint_logo(ui, &logo, Rect::from_center_size(pos2(x + 12.0, rect.center().y), vec2(side, side))) {
+                                x += 32.0;
                                 drew = true;
                             }
                         }
@@ -850,7 +1305,8 @@ impl App {
 
     fn item_interactions(&mut self, _ui: &mut Ui, resp: &egui::Response, e: &Entry, idx: usize, click: &mut Option<Click>) {
         let resp = resp.clone().on_hover_cursor(CursorIcon::PointingHand);
-        let single = matches!(e.kind, Kind::Folder(_) | Kind::Go(_) | Kind::Playlist(_) | Kind::NewStream | Kind::NewPlaylist);
+        let single = matches!(e.kind, Kind::Folder(_) | Kind::Go(_) | Kind::Playlist(_) | Kind::NewStream | Kind::NewPlaylist | Kind::Info | Kind::TvRetry)
+            || matches!(&e.kind, Kind::Stream(i) if self.data.streams.get(*i).is_some_and(|s| is_iptv_org(&s.url) || crate::radio::is_radio_browser(&s.url)));
         if (single && resp.clicked()) || (!single && (resp.double_clicked() || resp.clicked())) {
             *click = Some(Click::Open(idx));
         }
@@ -861,10 +1317,13 @@ impl App {
             }
         }
         let mut out = None;
-        resp.context_menu(|ui| {
-            ui.set_min_width(240.0);
-            self.entry_menu(ui, e, idx, &mut out);
-        });
+        // Entries without actions get no (empty) menu.
+        if !matches!(e.kind, Kind::Go(_) | Kind::Info | Kind::TvRetry | Kind::NewStream | Kind::NewPlaylist) {
+            resp.context_menu(|ui| {
+                ui.set_min_width(240.0);
+                self.entry_menu(ui, e, idx, &mut out);
+            });
+        }
         if out.is_some() {
             *click = out;
         }
@@ -886,6 +1345,8 @@ impl App {
                 (0u8, ph::HOUSE, "Start", LibLoc::Home),
                 (1, ph::FILM_STRIP, "Videos", LibLoc::Videos(None)),
                 (2, ph::MUSIC_NOTES, t!("Musik"), LibLoc::Music(MusicView::Songs)),
+                (7, ph::TELEVISION, t!("TV-Sender"), LibLoc::Tv(None)),
+                (8, ph::RADIO, t!("Radiosender"), LibLoc::Radio(None)),
                 (3, ph::BROADCAST, t!("Netzwerk"), LibLoc::Network),
                 (4, ph::PLAYLIST, "Playlists", LibLoc::Playlists(None)),
                 (5, ph::CLOCK_COUNTER_CLOCKWISE, t!("Zuletzt gespielt"), LibLoc::Recent),
@@ -1015,8 +1476,11 @@ impl App {
             widgets::painter_text_trunc(ui.painter(), pos2(vr.left() + 60.0, vr.center().y - 9.0), &st.media_title, FontId::proportional(13.0), t.text, w - 70.0);
         }
         widgets::painter_text_trunc(ui.painter(), pos2(r.left() + 10.0, vr.bottom() + 7.0), &st.media_title, FontId::proportional(12.0), t.text_dim, w - 20.0);
-        if st.duration > 0.0 {
-            widgets::progress_line(ui.painter(), Rect::from_min_max(pos2(r.left(), vr.bottom() - 3.0), pos2(r.right(), vr.bottom())), (st.time / st.duration) as f32, &t);
+        // Radio is live: a full line instead of the buffer position.
+        let radio = self.radio_urls.contains(&st.path);
+        if radio || st.duration > 0.0 {
+            let f = if radio { 1.0 } else { (st.time / st.duration) as f32 };
+            widgets::progress_line(ui.painter(), Rect::from_min_max(pos2(r.left(), vr.bottom() - 3.0), pos2(r.right(), vr.bottom())), f, &t);
         }
         if resp.hovered() {
             ui.painter().text(vr.center(), Align2::CENTER_CENTER, ph::ARROWS_OUT_SIMPLE, theme::icon(26.0), Color32::from_white_alpha(220));
@@ -1154,7 +1618,14 @@ impl App {
                     items.push((ph::PLAYLIST, p.name.clone(), t!("Wiedergabeliste"), Open::Playlist(i)));
                 }
                 for s in self.data.streams.iter().take(6) {
-                    items.push((ph::BROADCAST, crate::i18n::tr(&s.name).to_string(), "Stream", Open::Stream(s.url.clone())));
+                    let (icon, kind) = if is_iptv_org(&s.url) {
+                        (ph::TELEVISION_SIMPLE, t!("TV-Sender"))
+                    } else if crate::radio::is_radio_browser(&s.url) {
+                        (ph::RADIO, "Radio")
+                    } else {
+                        (ph::BROADCAST, "Stream")
+                    };
+                    items.push((icon, crate::i18n::tr(&s.name).to_string(), kind, Open::Stream(s.url.clone())));
                 }
                 let mut open = None;
                 if touch {
@@ -1192,6 +1663,8 @@ impl App {
                         }
                     }
                     Some(Open::Playlist(i)) => self.lib.go(LibLoc::Playlists(Some(*i))),
+                    Some(Open::Stream(url)) if is_iptv_org(url) => self.lib.go(LibLoc::Tv(None)),
+                    Some(Open::Stream(url)) if crate::radio::is_radio_browser(url) => self.lib.go(LibLoc::Radio(None)),
                     Some(Open::Stream(url)) => self.play_list(&[url.clone()], 0),
                     None => {}
                 }

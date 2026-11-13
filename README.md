@@ -1,60 +1,105 @@
 <div align="center">
 
+<img src="docs/assets/icon.svg" width="88" alt="Velour logo">
+
 # Velour
 
 **A calm, fast media player for Windows and Android, built on mpv.**
 
-Thin bars, a thick seek bar, your library right next to the video, and Plex built in.
+Your videos and music, your Plex server, thousands of free TV and radio stations –
+in one player with thin bars and a thick seek bar.
 
-[Download](https://github.com/BotAwesome/velour/releases/latest) ·
+[![Latest release](https://img.shields.io/github/v/release/BotAwesome/velour?color=D83F5C&label=release)](https://github.com/BotAwesome/velour/releases/latest)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-1A1220)](LICENSE)
+![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-2b2b2b)
+![Android 8+](https://img.shields.io/badge/Android-8%2B-2b2b2b)
+
+[**Download**](https://github.com/BotAwesome/velour/releases/latest) ·
+[Website](https://botawesome.github.io/velour/) ·
 [Changelog](CHANGELOG.md) ·
 [Build from source](#build-from-source)
 
-![Velour on Windows: chapter preview above the seek bar](docs/screenshots/desktop-player.jpg)
+<img src="docs/screenshots/desktop-player.jpg" alt="Velour on Windows: chapter preview above the seek bar">
 
 </div>
 
-## Features
+## Highlights
 
-**Playback**
-- Plays nearly every video and audio format via [mpv](https://mpv.io), with hardware decoding
-- Thick, easy-to-hit seek bar with preview thumbnails, chapter marks and an optional waveform
-- The seek bar snaps to chapter starts, and stops doing so for a chapter you keep skipping past
-- Resume where you left off, playback speed, A-B repeat, sleep timer, picture-in-picture
-- 10-band equalizer with presets, loudness normalization, night mode and video color presets
-- Subtitles: auto-load, add from file, and a style editor for font, size, colors and position
+<table>
+<tr>
+<td width="50%" valign="top">
 
-**Library**
-- Start page with "Continue watching", recently played, collections and pinned folders
-- Video and music folders, playlists, network streams and IPTV lists
-- Plex: sign in, browse your libraries, search, play and keep watch progress in sync
+**Playback**<br>
+Nearly every video and audio format via [mpv](https://mpv.io), with hardware decoding. A
+thick seek bar with preview thumbnails, chapter marks and an optional waveform. Resume,
+speed, A-B repeat, sleep timer, picture-in-picture, a 10-band equalizer and a subtitle
+style editor.
 
-**Android**
-- Touch layout: swipe for volume and brightness, double-tap the edges to skip
-- A player bar you rearrange live with drag and drop
-- Screen lock, video scaling modes, Plex libraries in a swipe-in drawer
+</td>
+<td width="50%" valign="top">
 
-**Everywhere**
-- German and English, light and dark theme, your own accent color
-- Updates itself from GitHub releases and shows what changed before installing
+**Library**<br>
+A start page with *Continue watching*, your video and music folders, playlists, pinned
+folders and network streams. Music plays on in the library with a mini player, so you
+can keep browsing.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**Live TV and radio**<br>
+Thousands of free TV channels ([iptv-org](https://github.com/iptv-org/iptv)) and radio
+stations ([Radio Browser](https://www.radio-browser.info)), sorted by language, with
+logos, search and favorites. TV shows what's on now and a day's program guide; radio
+shows the song that's playing.
+
+</td>
+<td valign="top">
+
+**Plex**<br>
+Sign in, browse your libraries, collections and playlists, search, and play – watch
+progress stays in sync with your server.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
+**Android**<br>
+A touch layout: swipe for volume and brightness, double-tap the edges to skip, lock the
+screen, and rearrange the player bar live with drag and drop.
+
+</td>
+<td valign="top">
+
+**Everywhere**<br>
+German and English, light and dark theme, your own accent color. Velour updates itself
+from GitHub releases and shows what changed before it installs anything.
+
+</td>
+</tr>
+</table>
 
 ## Screenshots
 
-**Windows:** start page and settings
+More on the [website](https://botawesome.github.io/velour/#screenshots).
 
-<p>
-  <img src="docs/screenshots/desktop-home.png" width="49%" alt="Start page with continue watching, collections and recently played">
-  <img src="docs/screenshots/desktop-settings.jpg" width="49%" alt="Settings, general page with updates">
-</p>
+<table>
+<tr>
+<td width="50%"><img src="docs/screenshots/desktop-home.jpg" alt="Start page with continue watching, collections and recently played"></td>
+<td width="50%"><img src="docs/screenshots/desktop-tv.jpg" alt="Public TV channels in German with what's on now"></td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/desktop-radio.jpg" alt="Radio stations with logos as tiles"></td>
+<td><img src="docs/screenshots/desktop-guide.jpg" alt="Program guide of a TV channel"></td>
+</tr>
+</table>
 
-**Android:** player, the live player bar editor and the start page
-
-<p>
-  <img src="docs/screenshots/phone-player.jpg" width="49%" alt="Player in landscape with the bottom bar">
-  <img src="docs/screenshots/phone-editor.jpg" width="49%" alt="Player bar editor with drag and drop">
-</p>
-<p>
-  <img src="docs/screenshots/phone-home.png" width="32%" alt="Start page on a phone">
+<p align="center">
+  <img src="docs/screenshots/phone-home.png" width="24%" alt="Start page on a phone">
+  <img src="docs/screenshots/phone-radio.png" width="24%" alt="Radio stations with the mini player">
+  <img src="docs/screenshots/phone-tv.png" width="24%" alt="TV channels with what's on now">
 </p>
 
 The videos in these screenshots are generated with FFmpeg (fractals and cellular automata).
@@ -63,12 +108,12 @@ The videos in these screenshots are generated with FFmpeg (fractals and cellular
 
 Get the files from the [latest release](https://github.com/BotAwesome/velour/releases/latest).
 
-- **Windows 10/11 (64-bit):** run `Velour-Setup-<version>.exe`. It installs for your user only
-  (no admin rights) and brings FFmpeg along. Uninstall from *Settings → Apps*.
-- **Android 8 or newer (arm64):** open `Velour-<version>-arm64.apk` on the phone and allow
-  installing apps from that source when Android asks.
+| | |
+|---|---|
+| **Windows 10/11 (64-bit)** | Run `Velour-Setup-<version>.exe`. It installs for your user only (no admin rights) and brings FFmpeg along. Uninstall from *Settings → Apps*. |
+| **Android 8 or newer (arm64)** | Open `Velour-<version>-arm64.apk` on the phone and allow installing apps from that source when Android asks. |
 
-Velour checks for new releases once a day (you can turn that off in *Settings → General*)
+Velour looks for a new release once a day (you can turn that off in *Settings → General*)
 and asks before it installs anything.
 
 ## Build from source
@@ -105,14 +150,9 @@ The APK ends up in `android\app\build\outputs\apk\release\`.
 ### Releasing
 
 Raise the version in `Cargo.toml`, add a section for it at the top of `CHANGELOG.md`, commit,
-then:
-
-```bash
-pwsh tools\release.ps1 -Publish
-```
-
-It builds the installer and the APK and publishes a GitHub release with the changelog section
-as its text. Installed copies of Velour pick it up from there.
+then run `pwsh tools\release.ps1 -Publish`. It builds the installer and the APK and publishes
+a GitHub release with the changelog section as its text. Installed copies of Velour pick it
+up from there.
 
 ## Project layout
 
@@ -120,16 +160,21 @@ as its text. Installed copies of Velour pick it up from there.
 |---|---|
 | `src/` | The app (egui), shared by Windows and Android |
 | `src/plex/` | Plex sign-in, browsing and playback |
+| `src/iptv.rs`, `src/epg.rs`, `src/radio.rs` | Public TV, program guide and radio directory |
 | `setup/` | The installer and uninstaller |
 | `android/` | Android project (NativeActivity) and build script |
 | `lang/en.json` | English texts (German is the source language) |
 | `i18n-macros/` | Compile-time check that every text has a translation |
+| `docs/` | The website (GitHub Pages) and screenshots |
 
 ## Credits
 
 Velour stands on [mpv / libmpv](https://mpv.io), [FFmpeg](https://ffmpeg.org),
 [egui](https://github.com/emilk/egui), [Phosphor Icons](https://phosphoricons.com) and
 [libmpv-android](https://github.com/jarnedemeulemeester/libmpv-android).
+TV channels come from [iptv-org](https://github.com/iptv-org/iptv), program guides from
+[epgshare01](https://epgshare01.online) and radio stations from
+[Radio Browser](https://www.radio-browser.info); Velour does not host any streams.
 Velour is not affiliated with or endorsed by Plex Inc.
 
 ## License

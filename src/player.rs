@@ -432,6 +432,12 @@ impl PlayerState {
         self.tracks.iter().any(|t| t.kind == "video" && !t.albumart && !t.image)
     }
 
+    /// Song announced by an internet radio stream (ICY metadata), unless it
+    /// just repeats the station name.
+    pub fn now_playing(&self) -> Option<&str> {
+        self.meta("icy-title").map(str::trim).filter(|s| !s.is_empty() && *s != self.media_title.trim() && *s != "-")
+    }
+
     pub fn is_audio_only(&self) -> bool {
         self.has_media() && !self.has_video()
     }

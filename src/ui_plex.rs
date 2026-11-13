@@ -518,7 +518,10 @@ impl App {
                     let _ = p.mpv.command(&["loadfile", url, if i == 0 { "replace" } else { "append" }, "-1", opts]);
                 }
                 p.set_pause(!self.data.settings.autoplay_on_open);
-                self.view = View::Player;
+                // Music stays in the library (mini player).
+                if list.first().is_none_or(|it| it.kind != plex::model::Kind::Track) {
+                    self.view = View::Player;
+                }
             }
             PlayMode::Next => {
                 for (url, opts) in entries.iter().rev() {

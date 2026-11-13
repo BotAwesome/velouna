@@ -871,7 +871,8 @@ impl App {
         let Some((p, st)) = self.player.as_ref().map(|p| (p.ctl.clone(), p.st.clone())) else { return };
 
         if st.is_audio_only() && !st.has_cover() {
-            self.music_art(&painter, rect, &st);
+            let logo = self.stream_logos.get(&st.path).cloned().and_then(|u| self.logos.get(&u, || u.clone()));
+            self.music_art(&painter, rect, &st, logo);
         } else if let Some(v) = &self.video {
             v.paint(&painter, rect);
         }
@@ -962,7 +963,7 @@ impl App {
         }
     }
 
-    fn music_art(&self, painter: &egui::Painter, rect: Rect, st: &crate::player::PlayerState) {
+    fn music_art(&self, painter: &egui::Painter, rect: Rect, st: &crate::player::PlayerState, logo: Option<crate::plex::images::Shown>) {
         let t = self.t;
         let c = rect.center();
         let s = (rect.height() * 0.32).clamp(60.0, 240.0);
@@ -971,10 +972,22 @@ impl App {
         let card = Rect::from_center_size(c - vec2(0.0, 30.0), vec2(s * 1.3, s * 1.3));
         let mix = |c: u8| (c as f32 * 0.4 + 40.0 * 0.6) as u8;
         let muted = Color32::from_rgb(mix(t.accent.r()), mix(t.accent.g()), mix(t.accent.b()));
-        widgets::draw_logo(painter, Rect::from_center_size(card.center(), vec2(s * 0.7, s * 0.7)), muted);
+        match logo {
+            // Radio station logo on a light card (many are dark-on-transparent).
+            Some(img) => {
+                let k = (card.width() * 0.78 / img.size.x).min(card.height() * 0.78 / img.size.y);
+                painter.rect_filled(card, CornerRadius::same(theme::R_LG + 4), Color32::from_gray(235));
+                let fit = Rect::from_center_size(card.center(), img.size * k);
+                painter.image(img.id, fit, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::from_white_alpha((img.alpha * 255.0) as u8));
+            }
+            None => widgets::draw_logo(painter, Rect::from_center_size(card.center(), vec2(s * 0.7, s * 0.7)), muted),
+        }
         let title = st.meta("title").map(|s| s.to_string()).unwrap_or(st.media_title.clone());
         painter.text(pos2(c.x, card.bottom() + 28.0), Align2::CENTER_CENTER, title, theme::semibold(20.0), t.text);
-        let sub = [st.meta("artist"), st.meta("album")].iter().flatten().cloned().collect::<Vec<_>>().join(" · ");
+        let sub = match st.now_playing() {
+            Some(song) => song.to_string(),
+            None => [st.meta("artist"), st.meta("album")].iter().flatten().cloned().collect::<Vec<_>>().join(" · "),
+        };
         painter.text(pos2(c.x, card.bottom() + 54.0), Align2::CENTER_CENTER, sub, FontId::proportional(13.5), t.text_dim);
     }
 

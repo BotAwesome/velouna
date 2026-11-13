@@ -3,6 +3,33 @@
 All notable changes to Velour. The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.1.2] - 2026-11-13
+
+### TV and radio
+- TV channels and radio stations have their own pages: in the sidebar on Windows, under "More"
+  on Android
+- Public TV channels (iptv-org) are sorted by language, with flags, channel logos, search and
+  favorites
+- What's on now shows next to each channel; "Program guide" in a channel's menu lists today and
+  tomorrow (data from epgshare01)
+- Radio stations from radio-browser.info replace the single SomaFM stream: by language and
+  popularity, with search, favorites and station logos
+- The player and the mini player show the song a station is playing
+
+### Playback
+- Opening a video with Velour (double-click, "Open with") showed no picture when Velour was not
+  running yet; the picture is there now
+- Music and radio no longer switch to the full-screen player; they keep playing in the mini
+  player while you browse
+
+### Android
+- Lists scroll with a swipe, and the view button switches between list and tiles
+- The layout follows a rotation right away
+- "What's new" shows long changelog lines in one piece
+
+### Website
+- Velour has a website: https://botawesome.github.io/velour/
+
 ## [0.1.1] - 2026-11-12
 
 ### Android

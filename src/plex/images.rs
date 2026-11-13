@@ -1,4 +1,4 @@
-//! Artwork loading for the Plex views.
+//! Artwork loading for the Plex views (and radio station logos).
 //!
 //! Images are scaled by the server's photo transcoder to the size a card needs,
 //! cached on disk, decoded on worker threads and kept on the GPU in a small LRU.
@@ -20,6 +20,17 @@ const FADE_SECS: f32 = 0.22;
 struct Job {
     key: String,
     url: String,
+}
+
+type Fetch = Arc<dyn Fn(&str) -> Result<Vec<u8>, String> + Send + Sync>;
+
+/// Where and how a loader gets its images.
+#[derive(Clone)]
+struct Source {
+    fetch: Fetch,
+    dir: PathBuf,
+    /// Longest side after decoding (None: as delivered).
+    max_side: Option<u32>,
 }
 
 enum Done {
@@ -49,26 +60,44 @@ pub struct Images {
     fading: bool,
 }
 
-fn disk_dir() -> PathBuf {
-    let d = crate::config::cache_dir().join("plex_img");
-    let _ = std::fs::create_dir_all(&d);
-    d
-}
-
-fn disk_path(key: &str) -> PathBuf {
+fn disk_path(dir: &std::path::Path, key: &str) -> PathBuf {
     let mut h = std::collections::hash_map::DefaultHasher::new();
     key.hash(&mut h);
-    disk_dir().join(format!("{:016x}.img", h.finish()))
+    let _ = std::fs::create_dir_all(dir);
+    dir.join(format!("{:016x}.img", h.finish()))
 }
 
 impl Images {
     pub fn new(ctx: egui::Context, http: Http) -> Images {
+        let fetch: Fetch = Arc::new(move |u: &str| http.bytes(u));
+        Self::start(ctx, Source { fetch, dir: crate::config::cache_dir().join("plex_img"), max_side: None }, 6)
+    }
+
+    /// Images from anywhere on the web (radio station logos): plain
+    /// requests without Plex headers, scaled down to `max_side`.
+    pub fn web(ctx: egui::Context, dir: &str, max_side: u32) -> Images {
+        let agent = ureq::AgentBuilder::new()
+            .timeout_connect(std::time::Duration::from_secs(8))
+            .timeout_read(std::time::Duration::from_secs(20))
+            .user_agent(&format!("Velour/{}", env!("CARGO_PKG_VERSION")))
+            .build();
+        let fetch: Fetch = Arc::new(move |u: &str| {
+            let r = agent.get(u).call().map_err(|e| e.to_string())?;
+            let mut buf = Vec::new();
+            use std::io::Read;
+            r.into_reader().take(8 * 1024 * 1024).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+            Ok(buf)
+        });
+        Self::start(ctx, Source { fetch, dir: crate::config::cache_dir().join(dir), max_side: Some(max_side) }, 4)
+    }
+
+    fn start(ctx: egui::Context, src: Source, workers: usize) -> Images {
         let queue: Arc<(Mutex<Vec<Job>>, Condvar)> = Arc::new((Mutex::new(Vec::new()), Condvar::new()));
         let (tx, rx) = channel();
-        for _ in 0..6 {
+        for _ in 0..workers {
             let q = queue.clone();
             let tx = tx.clone();
-            let http = http.clone();
+            let src = src.clone();
             let ctx = ctx.clone();
             std::thread::spawn(move || {
                 loop {
@@ -80,7 +109,7 @@ impl Images {
                         }
                         g.pop().unwrap()
                     };
-                    let res = load(&http, &job);
+                    let res = load(&src, &job);
                     let _ = tx.send(match res {
                         Some((w, h, rgba)) => Done::Ok { key: job.key, w, h, rgba },
                         None => Done::Failed(job.key),
@@ -168,12 +197,12 @@ impl Images {
     }
 }
 
-fn load(http: &Http, job: &Job) -> Option<(usize, usize, Vec<u8>)> {
-    let path = disk_path(&job.key);
+fn load(src: &Source, job: &Job) -> Option<(usize, usize, Vec<u8>)> {
+    let path = disk_path(&src.dir, &job.key);
     let bytes = match std::fs::read(&path) {
         Ok(b) if !b.is_empty() => b,
         _ => {
-            let b = http.bytes(&job.url).ok()?;
+            let b = (src.fetch)(&job.url).ok()?;
             let tmp = path.with_extension("tmp");
             if std::fs::write(&tmp, &b).is_ok() {
                 let _ = std::fs::rename(&tmp, &path);
@@ -187,6 +216,10 @@ fn load(http: &Http, job: &Job) -> Option<(usize, usize, Vec<u8>)> {
             let _ = std::fs::remove_file(&path);
             return None;
         }
+    };
+    let img = match src.max_side {
+        Some(m) if img.width().max(img.height()) > m => img.thumbnail(m, m),
+        _ => img,
     };
     let rgba = img.to_rgba8();
     let (w, h) = (rgba.width() as usize, rgba.height() as usize);

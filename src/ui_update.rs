@@ -35,31 +35,86 @@ fn plain(s: &str) -> String {
     out.replace("**", "").replace('`', "")
 }
 
-/// The bit of markdown release notes use: headings, bullets, paragraphs.
-pub fn markdown(ui: &mut Ui, t: &Theme, text: &str) {
+#[derive(Debug, PartialEq)]
+enum Block {
+    Gap,
+    Heading(String),
+    Subheading(String),
+    /// Indent (spaces before the "-"), text.
+    Bullet(usize, String),
+    Para(String),
+}
+
+/// Lines → blocks. A line that is neither blank, heading nor bullet
+/// continues the bullet or paragraph above it (wrapped changelog lines).
+fn blocks(text: &str) -> Vec<Block> {
+    let mut out: Vec<Block> = Vec::new();
     for line in text.lines() {
         let l = line.trim_end();
         let trimmed = l.trim_start();
         if trimmed.is_empty() {
-            ui.add_space(4.0);
+            out.push(Block::Gap);
         } else if let Some(h) = trimmed.strip_prefix("### ") {
-            ui.add_space(4.0);
-            ui.label(RichText::new(plain(h)).font(theme::semibold(13.5)).color(t.text));
+            out.push(Block::Subheading(plain(h)));
         } else if let Some(h) = trimmed.strip_prefix("## ").or_else(|| trimmed.strip_prefix("# ")) {
-            ui.add_space(6.0);
             // "[0.1.0] - 2026-11-12" → "0.1.0 – 2026-11-12"
-            let h = plain(h).replace(['[', ']'], "").replace(" - ", " – ");
-            ui.label(RichText::new(h).font(theme::semibold(15.5)).color(t.text));
+            out.push(Block::Heading(plain(h).replace(['[', ']'], "").replace(" - ", " – ")));
         } else if let Some(b) = trimmed.strip_prefix("- ").or_else(|| trimmed.strip_prefix("* ")) {
-            let indent = (l.len() - trimmed.len()) as f32 * 6.0;
-            ui.horizontal_top(|ui| {
-                ui.add_space(4.0 + indent);
-                ui.label(RichText::new("•").color(t.accent));
-                ui.add(egui::Label::new(RichText::new(plain(b)).color(t.text_dim)).wrap());
-            });
+            out.push(Block::Bullet(l.len() - trimmed.len(), plain(b)));
+        } else if let Some(Block::Bullet(_, s) | Block::Para(s)) = out.last_mut() {
+            s.push(' ');
+            s.push_str(&plain(trimmed));
         } else {
-            ui.add(egui::Label::new(RichText::new(plain(trimmed)).color(t.text_dim)).wrap());
+            out.push(Block::Para(plain(trimmed)));
         }
+    }
+    out
+}
+
+/// The bit of markdown release notes use: headings, bullets, paragraphs.
+pub fn markdown(ui: &mut Ui, t: &Theme, text: &str) {
+    for b in blocks(text) {
+        match b {
+            Block::Gap => ui.add_space(4.0),
+            Block::Subheading(h) => {
+                ui.add_space(4.0);
+                ui.label(RichText::new(h).font(theme::semibold(13.5)).color(t.text));
+            }
+            Block::Heading(h) => {
+                ui.add_space(6.0);
+                ui.label(RichText::new(h).font(theme::semibold(15.5)).color(t.text));
+            }
+            Block::Bullet(indent, s) => {
+                ui.horizontal_top(|ui| {
+                    ui.add_space(4.0 + indent as f32 * 6.0);
+                    ui.label(RichText::new("•").color(t.accent));
+                    ui.add(egui::Label::new(RichText::new(s).color(t.text_dim)).wrap());
+                });
+            }
+            Block::Para(s) => {
+                ui.add(egui::Label::new(RichText::new(s).color(t.text_dim)).wrap());
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Block, blocks};
+
+    #[test]
+    fn wrapped_bullets_join() {
+        let b = blocks("### Android\n- The app is signed. If you installed it, uninstall it once and\n  install this APK\n- Next\n\nText\nmore");
+        assert_eq!(
+            b,
+            vec![
+                Block::Subheading("Android".into()),
+                Block::Bullet(0, "The app is signed. If you installed it, uninstall it once and install this APK".into()),
+                Block::Bullet(0, "Next".into()),
+                Block::Gap,
+                Block::Para("Text more".into()),
+            ]
+        );
     }
 }
 

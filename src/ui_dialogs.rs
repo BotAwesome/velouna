@@ -164,11 +164,75 @@ impl App {
             Dialog::Error(e) => self.dlg_error(ui, e.clone()),
             Dialog::Update => self.dlg_update(ui),
             Dialog::WhatsNew(notes) => self.dlg_whats_new(ui, notes.clone()),
+            Dialog::TvGuide { title, country, keys } => self.dlg_tv_guide(ui, title, country, keys),
         });
         let blocking = matches!(d, Dialog::Onboarding(_)) || self.rebinding.is_some() || matches!(d, Dialog::Convert if self.dlg.convert_progress.is_some());
         if resp.should_close() && !blocking && self.dialog == Some(d) {
             self.dialog = None;
         }
+    }
+
+    /// Program of one TV channel, from now on, grouped by day.
+    fn dlg_tv_guide(&mut self, ui: &mut Ui, title: &str, country: &str, keys: &[String]) {
+        let t = self.t;
+        dlg_width(ui, 560.0);
+        if self.dlg_title(ui, &tf!("Programm · {}", title)) {
+            return;
+        }
+        let guide = self.epg.guide(country);
+        let now = crate::epg::now();
+        let progs: Vec<crate::epg::Prog> = guide.as_ref().and_then(|g| g.lookup(keys)).map(|p| p.iter().filter(|x| x.stop > now).cloned().collect()).unwrap_or_default();
+        if progs.is_empty() {
+            let msg = if guide.is_none() && self.epg.loading() { t!("Programm wird geladen …") } else { t!("Für diesen Sender gibt es kein Programm.") };
+            ui.label(RichText::new(msg).color(t.text_dim));
+            return;
+        }
+        let max_h = (ui.ctx().screen_rect().height() * 0.65).clamp(200.0, 620.0);
+        let today = crate::epg::day_of(now);
+        egui::ScrollArea::vertical().max_height(max_h).auto_shrink([false, true]).show(ui, |ui| {
+            let mut last_day = None;
+            for p in &progs {
+                let day = crate::epg::day_of(p.start.max(now));
+                if last_day != Some(day) {
+                    if last_day.is_some() {
+                        ui.add_space(10.0);
+                    }
+                    let label = match day - today {
+                        0 => t!("Heute").to_string(),
+                        1 => t!("Morgen").to_string(),
+                        _ => t!("Später").to_string(),
+                    };
+                    ui.label(RichText::new(label).font(theme::semibold(13.0)).color(t.text_faint));
+                    ui.add_space(4.0);
+                    last_day = Some(day);
+                }
+                let running = p.start <= now;
+                ui.horizontal_top(|ui| {
+                    let time = RichText::new(crate::epg::clock(p.start)).font(theme::semibold(14.0)).color(if running { t.accent } else { t.text_dim });
+                    ui.add_sized([48.0, 18.0], egui::Label::new(time));
+                    ui.vertical(|ui| {
+                        ui.add(egui::Label::new(RichText::new(&p.title).font(theme::semibold(14.0)).color(t.text)).wrap());
+                        if running {
+                            let frac = ((now - p.start) as f32 / (p.stop - p.start).max(1) as f32).clamp(0.0, 1.0);
+                            let (r, _) = ui.allocate_exact_size(vec2(ui.available_width().min(220.0), 3.0), Sense::hover());
+                            ui.painter().rect_filled(r, CornerRadius::same(2), t.border);
+                            ui.painter().rect_filled(Rect::from_min_size(r.min, vec2(r.width() * frac, r.height())), CornerRadius::same(2), t.accent);
+                            ui.label(RichText::new(tf!("läuft bis {}", crate::epg::clock(p.stop))).size(12.0).color(t.text_faint));
+                        }
+                        if !p.desc.is_empty() {
+                            let mut d: String = p.desc.chars().take(240).collect();
+                            if d.len() < p.desc.len() {
+                                d.push('…');
+                            }
+                            ui.add(egui::Label::new(RichText::new(d).size(12.5).color(t.text_dim)).wrap());
+                        }
+                    });
+                });
+                ui.add_space(8.0);
+            }
+        });
+        ui.add_space(6.0);
+        ui.label(RichText::new(t!("Programmdaten: epgshare01.online")).size(11.0).color(t.text_faint));
     }
 
     pub(crate) fn dlg_title(&mut self, ui: &mut Ui, title: &str) -> bool {
@@ -532,6 +596,31 @@ impl App {
                         s.video_folders = folders.0;
                         s.music_folders = folders.1;
                     }
+                });
+            }
+            // Touch: the phone has its own player bar (touch editor); window,
+            // mouse and keyboard options don't apply there.
+            SettingsPage::Interface if crate::mobile::touch() => {
+                r.section(ui, t!("Player-Leiste"));
+                let mut open_editor = false;
+                r.row(ui, t!("Player-Leiste bearbeiten"), t!("Öffnet den Player: Elemente per Ziehen links oder rechts unter der Zeitleiste platzieren."), |ui| {
+                    if widgets::accent_button(ui, &t, t!("Bearbeiten")).clicked() {
+                        open_editor = true;
+                    }
+                });
+                if open_editor {
+                    self.data.settings = s.clone();
+                    self.open_touch_editor(ui.ctx());
+                }
+                r.section(ui, t!("Erweitert"));
+                r.row(ui, t!("Ausblendverzögerung"), t!("Wie lange die Leisten nach dem Wegbewegen sichtbar bleiben."), |ui| {
+                    let mut v = s.hide_delay_ms as f64;
+                    widgets::value_box(ui, &t, &format!("{:.1} s", v / 1000.0), 60.0);
+                    widgets::slider(ui, &t, &mut v, 0.0, 3000.0, 140.0);
+                    s.hide_delay_ms = (v / 100.0).round() as u64 * 100;
+                });
+                r.row(ui, t!("Bibliothek: ganzen Ordner einreihen"), t!("Beim Abspielen aus der Bibliothek landen alle Folgen des Ordners in der Warteschlange."), |ui| {
+                    widgets::toggle(ui, &t, &mut s.library_add_folder_to_queue);
                 });
             }
             SettingsPage::Interface => {
@@ -1151,7 +1240,9 @@ impl App {
         // Preview bar
         egui::Frame::new().fill(t.panel).corner_radius(CornerRadius::same(theme::R_LG)).inner_margin(egui::Margin::same(10)).show(ui, |ui| {
             ui.set_width(ui.available_width());
-            ui.horizontal(|ui| {
+            // A full bar is wider than a narrow window: scroll instead of
+            // growing the dialog past the screen edge.
+            egui::ScrollArea::horizontal().id_salt("ctl_preview").show(ui, |ui| ui.horizontal(|ui| {
                 let (resp_l, p_l) = ui.dnd_drop_zone::<ControlDrag, ()>(egui::Frame::new().inner_margin(egui::Margin::same(4)), |ui| {
                     ui.set_min_size(vec2(60.0, 40.0));
                     ui.horizontal(|ui| {
@@ -1184,7 +1275,7 @@ impl App {
                         drop = Some((*p, Zone::Right, None));
                     }
                 }
-            });
+            }));
         });
         ui.add_space(12.0);
         ui.label(RichText::new(t!("Ablage")).font(theme::semibold(13.5)));
