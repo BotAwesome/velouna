@@ -2,7 +2,9 @@
 //! its assets are the Windows setup (`Velour-Setup-<v>.exe`) and the Android
 //! APK. Downloaded into the cache, checked against GitHub's SHA-256 digest,
 //! then handed to the installer (Windows: setup `--quiet --relaunch`;
-//! Android: the system package installer).
+//! Android: the system package installer; Linux: the .deb through
+//! `pkexec apt-get`, the tar.gz through its `install.sh`, then a restart).
+//! A release without a Linux file counts as "up to date" on Linux.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -65,6 +67,8 @@ pub enum Status {
 enum Msg {
     Checked(Result<Option<Release>, String>),
     Downloaded(Result<PathBuf, String>),
+    #[cfg(target_os = "linux")]
+    Installed(Result<(), String>),
 }
 
 pub struct Updater {
@@ -76,6 +80,8 @@ pub struct Updater {
     /// A release was found in the background: show the dialog when the
     /// user is not watching something.
     pub prompt: bool,
+    /// Linux: the update is installed; start the new version and quit.
+    pub restart: bool,
     rx: Option<Receiver<Msg>>,
     pub done: Arc<AtomicU64>,
     pub total: Arc<AtomicU64>,
@@ -89,6 +95,7 @@ impl Default for Updater {
             manual: false,
             auto_done: false,
             prompt: false,
+            restart: false,
             rx: None,
             done: Arc::new(AtomicU64::new(0)),
             total: Arc::new(AtomicU64::new(0)),
@@ -116,11 +123,28 @@ fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(10)).timeout_read(Duration::from_secs(30)).user_agent(&format!("Velour/{CURRENT}")).build()
 }
 
-fn pick_asset(assets: &[serde_json::Value]) -> Option<Asset> {
-    let want = |name: &str| {
-        let n = name.to_lowercase();
+/// Linux: installed from the .deb (in /opt/velour) rather than the per-user
+/// tar.gz.
+#[cfg(target_os = "linux")]
+pub fn linux_deb() -> bool {
+    std::env::current_exe().is_ok_and(|p| p.starts_with("/opt/velour"))
+}
+
+/// Whether a release file is the one for this platform and install type.
+fn wanted(name: &str) -> bool {
+    let n = name.to_lowercase();
+    #[cfg(target_os = "linux")]
+    {
+        if linux_deb() { n.ends_with("_amd64.deb") } else { n.ends_with("-linux-x86_64.tar.gz") }
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
         if crate::platform::MOBILE { n.ends_with(".apk") } else { n.ends_with(".exe") && n.contains("setup") }
-    };
+    }
+}
+
+fn pick_asset(assets: &[serde_json::Value]) -> Option<Asset> {
+    let want = |name: &str| wanted(name);
     assets.iter().find(|a| a["name"].as_str().is_some_and(want)).map(|a| Asset {
         name: a["name"].as_str().unwrap_or_default().to_string(),
         url: a["browser_download_url"].as_str().unwrap_or_default().to_string(),
@@ -145,11 +169,17 @@ fn fetch_latest() -> Result<Option<Release>, String> {
         return Ok(None);
     }
     let assets = json["assets"].as_array().cloned().unwrap_or_default();
+    let asset = pick_asset(&assets);
+    // Releases are made for Windows and Android first; one without a Linux
+    // package is nothing a Linux user can install.
+    if cfg!(target_os = "linux") && asset.is_none() {
+        return Ok(None);
+    }
     Ok(Some(Release {
         version: tag.trim_start_matches(['v', 'V']).to_string(),
         notes: json["body"].as_str().unwrap_or_default().replace("\r\n", "\n"),
         page: json["html_url"].as_str().map(str::to_string).unwrap_or_else(releases_page),
-        asset: pick_asset(&assets),
+        asset,
     }))
 }
 
@@ -339,6 +369,10 @@ impl Updater {
                     _ => Status::Failed(e),
                 };
             }
+            #[cfg(target_os = "linux")]
+            Msg::Installed(Ok(())) => self.restart = true,
+            #[cfg(target_os = "linux")]
+            Msg::Installed(Err(e)) => self.status = Status::Failed(e),
         }
         false
     }
@@ -362,11 +396,83 @@ impl Updater {
             crate::platform::android::install_apk(&path.to_string_lossy());
             self.status = Status::Installing(rel);
         }
-        #[cfg(not(any(windows, target_os = "android")))]
+        #[cfg(target_os = "linux")]
+        {
+            self.status = Status::Installing(rel);
+            let (tx, rx) = channel();
+            self.rx = Some(rx);
+            std::thread::spawn(move || {
+                let r = linux::install(&path);
+                if let Err(e) = &r {
+                    log::warn!("update install: {e}");
+                }
+                let _ = tx.send(Msg::Installed(r));
+            });
+        }
+        #[cfg(not(any(windows, target_os = "android", target_os = "linux")))]
         {
             let _ = (rel, path);
         }
         false
+    }
+}
+
+#[cfg(target_os = "linux")]
+pub mod linux {
+    use std::path::{Path, PathBuf};
+    use std::process::Command;
+
+    /// The executable to start after the update, read at startup: once the
+    /// package has replaced it, /proc/self/exe ends in " (deleted)".
+    fn exe() -> PathBuf {
+        static EXE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        EXE.get_or_init(|| std::env::current_exe().unwrap_or_else(|_| "velour".into())).clone()
+    }
+
+    /// Remembers the executable path before anything replaces it.
+    pub fn init() {
+        let _ = exe();
+    }
+
+    /// .deb: apt through pkexec (the desktop asks for the password);
+    /// tar.gz: unpacked next to the download, then its install.sh.
+    pub fn install(path: &Path) -> Result<(), String> {
+        let name = path.file_name().and_then(|n| n.to_str()).unwrap_or_default();
+        if name.ends_with(".deb") {
+            let st = Command::new("pkexec")
+                .args(["apt-get", "install", "-y", "--allow-downgrades"])
+                .arg(path)
+                .status()
+                .map_err(|e| format!("pkexec: {e}"))?;
+            return match st.code() {
+                Some(0) => Ok(()),
+                // 126: the password dialog was closed, 127: not authorized.
+                Some(126 | 127) => Err(crate::i18n::tr("Die Installation wurde abgebrochen.").to_string()),
+                _ => Err(format!("{} sudo apt install {}", crate::i18n::tr("Die Installation ist fehlgeschlagen. Installiere das Paket von Hand mit:"), path.display())),
+            };
+        }
+        let dir = path.with_extension("").with_extension("unpacked");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+        let st = Command::new("tar").arg("xzf").arg(path).arg("-C").arg(&dir).status().map_err(|e| format!("tar: {e}"))?;
+        if !st.success() {
+            return Err(format!("tar: {st}"));
+        }
+        let script = std::fs::read_dir(&dir)
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .map(|e| e.path().join("install.sh"))
+            .find(|p| p.is_file())
+            .ok_or_else(|| "install.sh missing".to_string())?;
+        let st = Command::new("sh").arg(&script).status().map_err(|e| format!("install.sh: {e}"))?;
+        if st.success() { Ok(()) } else { Err(format!("install.sh: {st}")) }
+    }
+
+    /// Starts the new version once this process has quit.
+    pub fn restart() {
+        let pid = std::process::id().to_string();
+        let script = r#"while kill -0 "$1" 2>/dev/null; do sleep 0.2; done; exec "$0""#;
+        let _ = Command::new("sh").arg("-c").arg(script).arg(exe()).arg(pid).spawn();
     }
 }
 

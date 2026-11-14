@@ -1022,7 +1022,7 @@ impl App {
                 }
                 if self.plex.token_store_failed {
                     ui.add_space(14.0);
-                    let note = if crate::platform::MOBILE { t!("Hinweis: Die Anmeldung konnte nicht gespeichert werden und gilt nur bis zum Beenden.") } else { t!("Hinweis: Die Anmeldung konnte nicht im Windows-Anmeldespeicher gesichert werden und gilt nur bis zum Beenden.") };
+                    let note = if crate::platform::MOBILE { t!("Hinweis: Die Anmeldung konnte nicht gespeichert werden und gilt nur bis zum Beenden.") } else if cfg!(windows) { t!("Hinweis: Die Anmeldung konnte nicht im Windows-Anmeldespeicher gesichert werden und gilt nur bis zum Beenden.") } else { t!("Hinweis: Die Anmeldung konnte nicht im Schlüsselbund gesichert werden und gilt nur bis zum Beenden. Läuft GNOME Keyring oder KWallet?") };
                     ui.label(RichText::new(note).size(12.0).color(t.text_faint));
                 }
             });

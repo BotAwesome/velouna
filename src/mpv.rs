@@ -234,6 +234,9 @@ macro_rules! sym {
 impl Api {
     pub fn load() -> Result<Api, String> {
         let mut last_err = String::from(t!("libmpv-2.dll nicht gefunden"));
+        // A libmpv file that exists but does not load (missing library,
+        // wrong symbol versions) says more than "not found" further down.
+        let mut file_err: Option<String> = None;
         for p in candidate_paths() {
             match unsafe { Library::new(&p) } {
                 Ok(lib) => {
@@ -243,14 +246,16 @@ impl Api {
                 Err(e) => {
                     log::warn!("libmpv {}: {e}", p.display());
                     last_err = format!("{}: {e}", p.display());
+                    if file_err.is_none() && p.is_file() {
+                        file_err = Some(last_err.clone());
+                    }
                 }
             }
         }
-        #[cfg(target_os = "linux")]
-        {
-            last_err = tf!("libmpv nicht gefunden – installiere es mit: {}", "sudo apt install libmpv2");
+        if cfg!(target_os = "linux") && file_err.is_none() {
+            return Err(tf!("libmpv nicht gefunden – installiere es mit: {}", "sudo apt install libmpv2"));
         }
-        Err(last_err)
+        Err(file_err.unwrap_or(last_err))
     }
 
     fn from_lib(lib: Library, path: PathBuf) -> Result<Api, String> {
@@ -602,8 +607,13 @@ impl Mpv {
                 let m = unsafe { &*(ev.data as *const RawEventLogMessage) };
                 let (prefix, text) = unsafe { (cstr(m.prefix), cstr(m.text)) };
                 let text = text.trim_end();
+                // Probing NVIDIA decoding on a machine without the NVIDIA
+                // driver ("Cannot load libcuda.so.1") is expected, not a fault.
+                let probe = text.contains("libcuda") || text.contains("libnvcuvid");
                 // MPV_LOG_LEVEL_ERROR = 20, WARN = 30
-                if m.log_level <= 20 {
+                if probe {
+                    log::info!("mpv/{prefix}: {text}");
+                } else if m.log_level <= 20 {
                     log::error!("mpv/{prefix}: {text}");
                 } else if m.log_level <= 30 {
                     log::warn!("mpv/{prefix}: {text}");

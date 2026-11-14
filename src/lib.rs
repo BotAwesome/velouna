@@ -204,9 +204,13 @@ fn set_cert_bundle() {
 }
 
 pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
+    #[cfg(not(target_os = "android"))]
     desktop_log::init();
     #[cfg(target_os = "linux")]
-    set_cert_bundle();
+    {
+        set_cert_bundle();
+        update::linux::init();
+    }
     mobile::set_simulator(phone);
     let size = if phone { [390.0, 800.0] } else { [1280.0, 760.0] };
     let mut viewport = egui::ViewportBuilder::default()
@@ -234,7 +238,18 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
     } else {
         viewport = viewport.with_maximized(true);
     }
-    let options = eframe::NativeOptions { viewport, centered, ..base_options() };
+    #[allow(unused_mut)]
+    let mut options = eframe::NativeOptions { viewport, centered, ..base_options() };
+    // winit 0.30 has no file drag & drop on Wayland; VELOUR_X11=1 runs
+    // Velour through XWayland, where dropping files works.
+    #[cfg(target_os = "linux")]
+    if std::env::var_os("VELOUR_X11").is_some_and(|v| v != "0") && std::env::var_os("DISPLAY").is_some() {
+        log::info!("VELOUR_X11: using X11 (XWayland)");
+        options.event_loop_builder = Some(Box::new(|b| {
+            use winit::platform::x11::EventLoopBuilderExtX11;
+            b.with_x11();
+        }));
+    }
     eframe::run_native("Velour", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, files)))))
 }
 

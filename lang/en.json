@@ -899,5 +899,15 @@
   "{} Medien nicht mehr gefunden": "{} media not found",
   "„{}“ entfernt": "“{}” removed",
   "„{}“ nicht mehr gefunden – entfernt": "“{}” not found – removed",
-  "„{}“ nicht mehr gefunden": "“{}” not found"
+  "„{}“ nicht mehr gefunden": "“{}” not found",
+  "Im Dateimanager anzeigen": "Show in file manager",
+  "Sprache der Oberfläche. „System“ folgt der Systemsprache.": "Interface language. “System” follows the system language.",
+  "1. Installiere Velour neu (das Paket bringt libmpv mit) – oder installiere libmpv vom System: sudo apt install libmpv2": "1. Reinstall Velour (the package brings libmpv) – or install libmpv from your system: sudo apt install libmpv2",
+  "2. Alternativ: Umgebungsvariable VELOUR_LIBMPV auf den Pfad von libmpv.so.2 setzen.": "2. Alternatively, set the environment variable VELOUR_LIBMPV to the path of libmpv.so.2.",
+  "Hinweis: Die Anmeldung konnte nicht im Schlüsselbund gesichert werden und gilt nur bis zum Beenden. Läuft GNOME Keyring oder KWallet?": "Note: the sign-in could not be saved in the keyring and only lasts until you quit. Is GNOME Keyring or KWallet running?",
+  "Ein Video läuft": "A video is playing",
+  "Musik läuft": "Music is playing",
+  "Die Installation wurde abgebrochen.": "The installation was cancelled.",
+  "Die Installation ist fehlgeschlagen. Installiere das Paket von Hand mit:": "The installation failed. Install the package by hand with:",
+  "Zum Installieren des Pakets fragt Linux gleich nach deinem Passwort. Danach startet Velour von selbst neu.": "To install the package, Linux will ask for your password. Velour then restarts by itself."
 }

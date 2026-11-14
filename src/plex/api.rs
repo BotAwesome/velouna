@@ -60,8 +60,8 @@ impl Http {
             .set("X-Plex-Product", "Velour")
             .set("X-Plex-Version", env!("CARGO_PKG_VERSION"))
             .set("X-Plex-Client-Identifier", &self.client_id)
-            .set("X-Plex-Platform", "Windows")
-            .set("X-Plex-Device", "PC")
+            .set("X-Plex-Platform", crate::platform::PLEX_PLATFORM)
+            .set("X-Plex-Device", if crate::platform::MOBILE { "Android" } else { "PC" })
             .set("X-Plex-Device-Name", &self.device_name)
             .set("X-Plex-Provides", "player")
             .set("X-Plex-Language", crate::i18n::code());

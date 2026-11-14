@@ -27,9 +27,10 @@ ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "target", "x86_64-unknown-linux-gnu", "release", "velour")
 DIST = os.path.join(ROOT, "dist")
 RUNTIME = os.environ.get("VELOUR_LINUX_RUNTIME", os.path.join(DIST, "linux-runtime"))
-# System libraries the bundled libmpv uses (graphics, audio, fonts): every
+# System libraries the bundled libmpv and the window code (winit loads the
+# X11 libraries at runtime) use: graphics, audio, fonts. Every
 # desktop has them; the .deb names them so apt can check.
-DEPENDS = "libc6 (>= 2.35), libegl1, libgl1, libgbm1, libdrm2, libx11-6, libxkbcommon0, libwayland-client0, libwayland-egl1, libfontconfig1, libfreetype6, libharfbuzz0b, libpulse0, ca-certificates, libva2, libva-drm2, libva-x11-2, libvdpau1"
+DEPENDS = "libc6 (>= 2.35), libegl1, libgl1, libgbm1, libdrm2, libx11-6, libx11-xcb1, libxcursor1, libxrandr2, libxi6, libxkbcommon0, libxkbcommon-x11-0, libwayland-client0, libwayland-egl1, libfontconfig1, libfreetype6, libharfbuzz0b, libpulse0, ca-certificates, libva2, libva-drm2, libva-x11-2, libvdpau1"
 NOW = int(time.time())
 
 cargo = open(os.path.join(ROOT, "Cargo.toml"), encoding="utf-8").read()
@@ -64,6 +65,48 @@ Categories=AudioVideo;Video;Audio;Player;
 Keywords=video;music;player;mpv;plex;tv;radio;
 StartupWMClass=velour
 MimeType={";".join(MIME)};
+"""
+
+# AppStream entry: lists Velour in COSMIC Store / GNOME Software / Discover
+# once the .deb is installed.
+METAINFO = f"""<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.botawesome.velour</id>
+  <name>Velour</name>
+  <summary>Calm, fast media player for videos, music, Plex, TV and radio</summary>
+  <summary xml:lang="de">Ruhiger, schneller Player für Videos, Musik, Plex, TV und Radio</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+  <developer id="io.github.botawesome"><name>BotAwesome</name></developer>
+  <description>
+    <p>Videos and music, your Plex server and thousands of free TV and radio stations in one player with thin bars and a thick seek bar. Built on mpv.</p>
+    <p xml:lang="de">Videos und Musik, dein Plex-Server und tausende freie TV- und Radiosender in einem Player mit schmalen Leisten und dicker Seek-Bar. Basiert auf mpv.</p>
+  </description>
+  <launchable type="desktop-id">velour.desktop</launchable>
+  <url type="homepage">https://botawesome.github.io/velour/</url>
+  <url type="vcs-browser">https://github.com/BotAwesome/velour</url>
+  <categories><category>AudioVideo</category><category>Video</category><category>Audio</category><category>Player</category></categories>
+  <provides>{"".join(f"<mediatype>{m}</mediatype>" for m in MIME)}<binary>velour</binary></provides>
+  <content_rating type="oars-1.1"/>
+  <releases><release version="{VERSION}" date="{time.strftime('%Y-%m-%d', time.gmtime(NOW))}"/></releases>
+</component>
+"""
+
+# What the package ships besides Velour, and under which licenses.
+COPYRIGHT = """Velour - GPL-3.0-or-later
+https://github.com/BotAwesome/velour
+
+Bundled in /opt/velour (Linux builds):
+  lib/libmpv.so.2   mpv (GPL-2.0-or-later) with FFmpeg (built --enable-gpl
+                    --enable-version3, so GPL-3.0-or-later), libass, LuaJIT
+  ffmpeg, ffprobe   FFmpeg, same build (GPL-3.0-or-later)
+  yt-dlp            yt-dlp standalone build (Unlicense)
+  lib/*             OpenSSL 3 (Apache-2.0), FriBidi (LGPL-2.1+), liblzma
+                    (0BSD/public domain), bzip2 (bzip2 license), Little CMS
+                    (MIT), uchardet (MPL-1.1/GPL/LGPL), libjpeg-turbo (BSD-style),
+                    LuaJIT (MIT) - taken from Ubuntu 22.04
+Sources: https://mpv.io, https://ffmpeg.org, https://github.com/yt-dlp/yt-dlp
+Build script: tools/linux/build-libs.sh in the Velour sources.
 """
 
 INSTALL_SH = """#!/bin/sh
@@ -181,11 +224,12 @@ def main():
         *runtime_files("./opt/velour"),
         ("./usr/share/applications/velour.desktop", DESKTOP.encode(), 0o644),
         ("./usr/share/icons/hicolor/scalable/apps/velour.svg", ICON_SVG, 0o644),
-        ("./usr/share/doc/velour/copyright", b"Velour - GPL-3.0-or-later\nhttps://github.com/BotAwesome/velour\n", 0o644),
+        ("./usr/share/doc/velour/copyright", COPYRIGHT.encode(), 0o644),
+        ("./usr/share/metainfo/io.github.botawesome.velour.metainfo.xml", METAINFO.encode(), 0o644),
     ]
     dirs = ["./", "./opt/", "./opt/velour/", "./opt/velour/lib/", "./usr/", "./usr/bin/", "./usr/share/", "./usr/share/applications/", "./usr/share/icons/",
             "./usr/share/icons/hicolor/", "./usr/share/icons/hicolor/scalable/", "./usr/share/icons/hicolor/scalable/apps/",
-            "./usr/share/doc/", "./usr/share/doc/velour/"]
+            "./usr/share/doc/", "./usr/share/doc/velour/", "./usr/share/metainfo/"]
     installed_kb = sum(len(d) for _, d, _ in data_files) // 1024 + 1
     control = f"""Package: velour
 Version: {VERSION}
@@ -200,7 +244,7 @@ Description: Calm, fast media player built on mpv
  Videos and music, your Plex server and thousands of free TV and radio
  stations in one player with thin bars and a thick seek bar.
 """
-    postinst = b"#!/bin/sh\nset -e\nupdate-desktop-database -q /usr/share/applications 2>/dev/null || true\ngtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true\n"
+    postinst = b"#!/bin/sh\nset -e\nupdate-desktop-database -q /usr/share/applications 2>/dev/null || true\ngtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true\nappstreamcli refresh-cache >/dev/null 2>&1 || true\n"
     control_tgz = targz([("./control", control.encode(), 0o644), ("./postinst", postinst, 0o755), ("./postrm", postinst, 0o755)], ["./"])
     data_tgz = targz(data_files, dirs, [("./usr/bin/velour", "/opt/velour/velour")])
     deb = ar([("debian-binary", b"2.0\n"), ("control.tar.gz", control_tgz), ("data.tar.gz", data_tgz)])
@@ -214,6 +258,7 @@ Description: Calm, fast media player built on mpv
         *runtime_files(top),
         (f"{top}/velour.desktop", DESKTOP.encode(), 0o644),
         (f"{top}/velour.svg", ICON_SVG, 0o644),
+        (f"{top}/COPYING-bundled.txt", COPYRIGHT.encode(), 0o644),
         (f"{top}/install.sh", INSTALL_SH.encode(), 0o755),
         (f"{top}/uninstall.sh", UNINSTALL_SH.encode(), 0o755),
         (f"{top}/README.txt", README.encode(), 0o644),

@@ -512,6 +512,13 @@ impl App {
             }
         }
         if self.update.poll() {
+            #[cfg(target_os = "linux")]
+            if self.update.restart {
+                // The new version is installed: start it, then quit.
+                crate::update::linux::restart();
+                ctx.send_viewport_cmd(egui::ViewportCommand::Close);
+                return;
+            }
             let skipped = matches!(&self.update.status, Status::Available(r) if r.version == self.data.settings.update_skip);
             if self.update.manual {
                 self.dialog = Some(Dialog::Update);
@@ -1681,6 +1688,18 @@ impl App {
                     self.sleep_done();
                 }
             }
+        }
+        #[cfg(not(target_os = "android"))]
+        {
+            // Video playing: screen stays on; music: no standby.
+            use crate::platform::Awake;
+            let awake = match self.player.as_ref() {
+                Some(p) if p.st.has_media() && !p.st.paused => {
+                    if p.st.has_video() { Awake::Display } else { Awake::System }
+                }
+                _ => Awake::No,
+            };
+            crate::platform::keep_awake(awake);
         }
         #[cfg(target_os = "android")]
         {

@@ -52,6 +52,10 @@ arboard = { version = "3", features = ["wayland-data-control"] }
 eframe = { version = "0.32", default-features = false, features = ["wayland", "x11"] }
 keyring = { version = "3", features = ["async-secret-service", "async-io", "crypto-rust"] }
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
+# Keeping the screen awake during playback (portal Inhibit, ScreenSaver).
+zbus = "5"
+# Only to pick X11 over Wayland on request (VELOUR_X11=1); same as eframe's.
+winit = { version = "0.30", default-features = false, features = ["x11"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.14"

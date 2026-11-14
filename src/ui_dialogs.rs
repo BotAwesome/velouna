@@ -549,7 +549,7 @@ impl App {
         match page {
             SettingsPage::General => {
                 r.section(ui, t!("Sprache"));
-                let lang_info = if crate::platform::MOBILE { t!("Sprache der Oberfläche. „System“ folgt der Gerätesprache.") } else { t!("Sprache der Oberfläche. „System“ folgt der Windows-Anzeigesprache.") };
+                let lang_info = if crate::platform::MOBILE { t!("Sprache der Oberfläche. „System“ folgt der Gerätesprache.") } else { if cfg!(windows) { t!("Sprache der Oberfläche. „System“ folgt der Windows-Anzeigesprache.") } else { t!("Sprache der Oberfläche. „System“ folgt der Systemsprache.") } };
                 r.row(ui, t!("Sprache"), lang_info, |ui| {
                     widgets::segmented(ui, &t, &mut s.language, &[(Language::System, "System"), (Language::German, "Deutsch"), (Language::English, "English")]);
                 });
@@ -1486,7 +1486,7 @@ impl App {
                     let p = p.clone();
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(tf!("{}  Fertig: {}", ph::CHECK_CIRCLE, media::display_name(&p))).color(t.accent));
-                        if ui.button(t!("Im Explorer zeigen")).clicked() {
+                        if ui.button(crate::platform::show_in_folder_label()).clicked() {
                             crate::ui_panels::show_in_explorer(&p);
                         }
                     });
@@ -1834,9 +1834,16 @@ impl App {
         ui.label(RichText::new(e).monospace().color(t.danger));
         ui.add_space(8.0);
         ui.label(t!("So behebst du das:"));
-        ui.label(t!("1. Lade ein „mpv-dev-x86_64“-Paket herunter (z. B. von github.com/shinchiro/mpv-winbuild-cmake/releases)."));
-        ui.label(t!("2. Lege die enthaltene libmpv-2.dll neben velour.exe oder in den Ordner „lib“."));
-        ui.label(t!("3. Alternativ: Umgebungsvariable VELOUR_LIBMPV auf den Pfad der DLL setzen."));
+        if cfg!(target_os = "linux") {
+            // The packages bring libmpv in /opt/velour/lib (or the per-user
+            // folder); missing means a damaged install or a bare binary.
+            ui.label(t!("1. Installiere Velour neu (das Paket bringt libmpv mit) – oder installiere libmpv vom System: sudo apt install libmpv2"));
+            ui.label(t!("2. Alternativ: Umgebungsvariable VELOUR_LIBMPV auf den Pfad von libmpv.so.2 setzen."));
+        } else {
+            ui.label(t!("1. Lade ein „mpv-dev-x86_64“-Paket herunter (z. B. von github.com/shinchiro/mpv-winbuild-cmake/releases)."));
+            ui.label(t!("2. Lege die enthaltene libmpv-2.dll neben velour.exe oder in den Ordner „lib“."));
+            ui.label(t!("3. Alternativ: Umgebungsvariable VELOUR_LIBMPV auf den Pfad der DLL setzen."));
+        }
     }
 
     // ======================================================== onboarding

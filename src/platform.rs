@@ -9,8 +9,24 @@ pub mod android;
 pub const MOBILE: bool = cfg!(target_os = "android");
 
 /// mpv `hwdec` when hardware decoding is on. Android: MediaCodec, copied
-/// back so it works with the OpenGL render API.
+/// back so it works with the OpenGL render API. Desktop: `auto-safe` tries
+/// the zero-copy decoders first and falls back to their copy-back variants
+/// (on Linux under Wayland: vaapi-copy / nvdec-copy).
 pub const HWDEC: &str = if MOBILE { "mediacodec-copy" } else { "auto-safe" };
+
+/// Name of the system for Plex's device list (X-Plex-Platform).
+pub const PLEX_PLATFORM: &str = if cfg!(target_os = "android") {
+    "Android"
+} else if cfg!(target_os = "linux") {
+    "Linux"
+} else {
+    "Windows"
+};
+
+/// "Show in Explorer" / "Show in file manager", as a menu entry.
+pub fn show_in_folder_label() -> &'static str {
+    if cfg!(windows) { t!("Im Explorer anzeigen") } else { t!("Im Dateimanager anzeigen") }
+}
 
 /// Opens a web page in the system browser.
 pub fn open_url(url: &str) {
@@ -25,6 +41,115 @@ pub fn open_url(url: &str) {
     #[cfg(target_os = "linux")]
     {
         let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
+}
+
+/// What playback needs to stay awake: nothing, the system (music: no
+/// suspend) or also the display (video: no screen saver, no blanking).
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Awake {
+    No = 0,
+    System = 1,
+    Display = 2,
+}
+
+/// Keeps the computer awake while something plays. Called every frame; acts
+/// only on changes. libmpv's render API leaves this to the app (mpv's own
+/// `stop-screensaver` lives in its window code, which Velour does not use).
+/// Windows: SetThreadExecutionState on the UI thread. Linux: the desktop
+/// portal's Inhibit and org.freedesktop.ScreenSaver, from a thread that
+/// keeps the D-Bus connection (and so the inhibition) open.
+#[cfg(not(target_os = "android"))]
+pub fn keep_awake(want: Awake) {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static CUR: AtomicU8 = AtomicU8::new(Awake::No as u8);
+    if CUR.swap(want as u8, Ordering::Relaxed) == want as u8 {
+        return;
+    }
+    #[cfg(windows)]
+    {
+        #[link(name = "kernel32")]
+        unsafe extern "system" {
+            fn SetThreadExecutionState(flags: u32) -> u32;
+        }
+        const CONTINUOUS: u32 = 0x8000_0000;
+        const SYSTEM: u32 = 0x1;
+        const DISPLAY: u32 = 0x2;
+        let flags = match want {
+            Awake::No => CONTINUOUS,
+            Awake::System => CONTINUOUS | SYSTEM,
+            Awake::Display => CONTINUOUS | SYSTEM | DISPLAY,
+        };
+        unsafe { SetThreadExecutionState(flags) };
+    }
+    #[cfg(target_os = "linux")]
+    linux_awake::set(want);
+}
+
+#[cfg(target_os = "linux")]
+mod linux_awake {
+    use super::Awake;
+    use std::collections::HashMap;
+    use std::sync::mpsc::{Receiver, Sender, channel};
+    use std::sync::{Mutex, OnceLock};
+    use zbus::zvariant::{OwnedObjectPath, Value};
+
+    const PORTAL: &str = "org.freedesktop.portal.Desktop";
+    const SAVER: &str = "org.freedesktop.ScreenSaver";
+
+    pub fn set(want: Awake) {
+        static TX: OnceLock<Mutex<Sender<Awake>>> = OnceLock::new();
+        let tx = TX.get_or_init(|| {
+            let (tx, rx) = channel();
+            let _ = std::thread::Builder::new().name("velour-inhibit".into()).spawn(move || run(rx));
+            Mutex::new(tx)
+        });
+        if let Ok(tx) = tx.lock() {
+            let _ = tx.send(want);
+        }
+    }
+
+    fn run(rx: Receiver<Awake>) {
+        let conn = match zbus::blocking::Connection::session() {
+            Ok(c) => c,
+            Err(e) => {
+                log::warn!("keep awake: no session bus: {e}");
+                return;
+            }
+        };
+        let mut request: Option<OwnedObjectPath> = None;
+        let mut cookie: Option<u32> = None;
+        for want in rx {
+            if let Some(h) = request.take() {
+                let _ = conn.call_method(Some(PORTAL), h.as_str(), Some("org.freedesktop.portal.Request"), "Close", &());
+            }
+            if let Some(c) = cookie.take() {
+                let _ = conn.call_method(Some(SAVER), "/org/freedesktop/ScreenSaver", Some(SAVER), "UnInhibit", &(c,));
+            }
+            if want == Awake::No {
+                continue;
+            }
+            let display = want == Awake::Display;
+            let reason = if display { t!("Ein Video läuft") } else { t!("Musik läuft") };
+            // Portal flags: 4 = suspend, 8 = idle (screen saver, blanking).
+            let flags: u32 = if display { 4 | 8 } else { 4 };
+            let mut opts: HashMap<&str, Value> = HashMap::new();
+            opts.insert("reason", Value::from(reason));
+            match conn.call_method(Some(PORTAL), "/org/freedesktop/portal/desktop", Some("org.freedesktop.portal.Inhibit"), "Inhibit", &("", flags, opts)) {
+                Ok(reply) => request = reply.body().deserialize::<OwnedObjectPath>().ok(),
+                Err(e) => log::info!("keep awake: portal: {e}"),
+            }
+            // Desktops whose portal has no Inhibit still have this one.
+            if display {
+                match conn.call_method(Some(SAVER), "/org/freedesktop/ScreenSaver", Some(SAVER), "Inhibit", &("Velour", reason)) {
+                    Ok(reply) => cookie = reply.body().deserialize::<u32>().ok(),
+                    Err(e) => log::info!("keep awake: ScreenSaver: {e}"),
+                }
+            }
+            if request.is_none() && cookie.is_none() {
+                log::warn!("keep awake: neither the portal nor org.freedesktop.ScreenSaver took the inhibition");
+            }
+        }
     }
 }
 
@@ -131,7 +256,8 @@ pub fn clipboard_text() -> String {
 
 // ------------------------------------------------------------ secrets
 
-/// Secret storage: Windows Credential Manager on desktop; on Android a file
+/// Secret storage: Windows Credential Manager or the Linux Secret Service
+/// (GNOME Keyring, KWallet) on desktop; on Android a file
 /// in the app's private storage (sandboxed per app by the OS).
 pub mod secret {
     /// A separate data folder (`VELOUR_DATA_DIR`) is a separate profile,

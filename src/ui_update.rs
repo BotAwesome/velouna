@@ -263,6 +263,12 @@ impl App {
                 } else {
                     (t!("Installieren und neu starten"), t!("Velour wird kurz geschlossen und startet danach von selbst neu."))
                 };
+                #[cfg(target_os = "linux")]
+                let info = if crate::update::linux_deb() {
+                    t!("Zum Installieren des Pakets fragt Linux gleich nach deinem Passwort. Danach startet Velour von selbst neu.")
+                } else {
+                    info
+                };
                 ui.label(RichText::new(info).size(12.5).color(t.text_dim));
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {

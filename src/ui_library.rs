@@ -772,7 +772,7 @@ impl App {
         }
         // Phones have no Explorer to show a file in.
         if !crate::platform::MOBILE && (matches!(&e.kind, Kind::File(f) if !media::is_url(f)) || matches!(e.kind, Kind::Folder(_))) {
-            if widgets::menu_item(ui, &t, ph::FOLDER_OPEN, t!("Im Explorer anzeigen"), "", false).clicked() {
+            if widgets::menu_item(ui, &t, ph::FOLDER_OPEN, crate::platform::show_in_folder_label(), "", false).clicked() {
                 *out = Some(Click::Menu(MenuAct::Explorer, idx));
                 ui.close();
             }

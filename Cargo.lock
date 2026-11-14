@@ -3747,6 +3747,7 @@ dependencies = [
  "velour-rfd-shim",
  "winit",
  "winresource",
+ "zbus 5.19.0",
 ]
 
 [[package]]

@@ -1016,7 +1016,7 @@ impl App {
                             save_one = Some(e.filename.clone());
                             ui.close();
                         }
-                        if !crate::platform::MOBILE && !media::is_url(&e.filename) && widgets::menu_item(ui, &t, ph::FOLDER_OPEN, t!("Im Explorer anzeigen"), "", false).clicked() {
+                        if !crate::platform::MOBILE && !media::is_url(&e.filename) && widgets::menu_item(ui, &t, ph::FOLDER_OPEN, crate::platform::show_in_folder_label(), "", false).clicked() {
                             show_in_explorer(&e.filename);
                             ui.close();
                         }
