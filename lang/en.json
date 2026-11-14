@@ -145,6 +145,7 @@
   "Konvertierung abgebrochen": "Conversion cancelled",
   "Symbol {} fehlt: {e}": "Symbol {} missing: {e}",
   "libmpv-2.dll nicht gefunden": "libmpv-2.dll not found",
+  "libmpv nicht gefunden – installiere es mit: {}": "libmpv not found – install it with: {}",
   "mpv_create() fehlgeschlagen": "mpv_create() failed",
   "Spur {}": "Track {}",
   "  · extern": "  · external",

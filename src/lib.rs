@@ -152,7 +152,9 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
         .with_decorations(false)
         .with_resizable(true)
         .with_drag_and_drop(true)
-        .with_icon(app_icon());
+        .with_icon(app_icon())
+        // Linux: ties the window to velour.desktop (icon, dock, "Open with").
+        .with_app_id("velour");
     let mut centered = !phone;
     if phone {
         // Top left, clear of the taskbar.

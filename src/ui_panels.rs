@@ -42,6 +42,20 @@ pub fn show_in_explorer(path: &str) {
     {
         let _ = std::process::Command::new("explorer").arg(format!("/select,{}", path.replace('/', "\\"))).spawn();
     }
+    #[cfg(target_os = "linux")]
+    {
+        // Selects the file in Files/Dolphin/... (FileManager1), else opens its folder.
+        let uri = format!("file://{}", path.replace('%', "%25").replace(' ', "%20").replace('#', "%23"));
+        let shown = std::process::Command::new("gdbus")
+            .args(["call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path", "/org/freedesktop/FileManager1", "--method", "org.freedesktop.FileManager1.ShowItems", &format!("['{uri}']"), ""])
+            .status()
+            .is_ok_and(|s| s.success());
+        if !shown {
+            if let Some(dir) = std::path::Path::new(path).parent() {
+                let _ = std::process::Command::new("xdg-open").arg(dir).spawn();
+            }
+        }
+    }
 }
 
 impl App {

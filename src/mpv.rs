@@ -167,7 +167,11 @@ pub struct Api {
 fn candidate_paths() -> Vec<PathBuf> {
     #[cfg(target_os = "android")]
     let names = ["libmpv.so"];
-    #[cfg(not(target_os = "android"))]
+    // Linux: the system's libmpv (Debian/Ubuntu: libmpv2, older libmpv1);
+    // the AppImage ships its own next to the executable.
+    #[cfg(target_os = "linux")]
+    let names = ["libmpv.so.2", "libmpv.so.1", "libmpv.so"];
+    #[cfg(not(any(target_os = "android", target_os = "linux")))]
     let names = ["libmpv-2.dll", "mpv-2.dll", "mpv-1.dll"];
     let mut dirs: Vec<PathBuf> = Vec::new();
     if let Ok(p) = std::env::var("VELOUR_LIBMPV").or_else(|_| std::env::var("VLB_LIBMPV")) {
@@ -225,6 +229,10 @@ impl Api {
                 Ok(lib) => return Self::from_lib(lib, p),
                 Err(e) => last_err = format!("{}: {e}", p.display()),
             }
+        }
+        #[cfg(target_os = "linux")]
+        {
+            last_err = tf!("libmpv nicht gefunden – installiere es mit: {}", "sudo apt install libmpv2");
         }
         Err(last_err)
     }

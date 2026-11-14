@@ -22,6 +22,10 @@ pub fn open_url(url: &str) {
     {
         android::open_url(url);
     }
+    #[cfg(target_os = "linux")]
+    {
+        let _ = std::process::Command::new("xdg-open").arg(url).spawn();
+    }
 }
 
 /// Reads a system font by its Windows file name; on Android the closest
@@ -44,10 +48,63 @@ pub fn font(windows_name: &str) -> Option<Vec<u8>> {
         };
         candidates.iter().find_map(|f| std::fs::read(format!("/system/fonts/{f}")).ok())
     }
-    #[cfg(not(any(windows, target_os = "android")))]
+    #[cfg(target_os = "linux")]
+    {
+        // Closest fonts of common distributions (Pop!_OS: Fira and Noto).
+        let candidates: &[&str] = match windows_name {
+            "segoeui.ttf" => &["NotoSans-Regular.ttf", "FiraSans-Regular.ttf", "Ubuntu-R.ttf", "Cantarell-Regular.otf", "DejaVuSans.ttf"],
+            "seguisb.ttf" => &["NotoSans-SemiBold.ttf", "FiraSans-SemiBold.ttf", "NotoSans-Bold.ttf", "Ubuntu-M.ttf", "DejaVuSans-Bold.ttf"],
+            "seguisym.ttf" => &["NotoSansSymbols2-Regular.ttf", "NotoSansSymbols-Regular.ttf", "DejaVuSans.ttf"],
+            "consola.ttf" => &["FiraMono-Regular.ttf", "NotoSansMono-Regular.ttf", "UbuntuMono-R.ttf", "DejaVuSansMono.ttf"],
+            "YuGothM.ttc" => &["NotoSansCJK-Regular.ttc", "NotoSansCJKjp-Regular.otf", "DroidSansFallbackFull.ttf"],
+            _ => &[],
+        };
+        linux_fonts::find(candidates)
+    }
+    #[cfg(not(any(windows, target_os = "android", target_os = "linux")))]
     {
         let _ = windows_name;
         None
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod linux_fonts {
+    use std::path::{Path, PathBuf};
+    use std::sync::OnceLock;
+    /// All font files below the usual font folders, indexed once.
+    fn index() -> &'static Vec<PathBuf> {
+        static I: OnceLock<Vec<PathBuf>> = OnceLock::new();
+        I.get_or_init(|| {
+            let mut roots = vec![PathBuf::from("/usr/share/fonts"), PathBuf::from("/usr/local/share/fonts")];
+            if let Some(h) = std::env::var_os("HOME") {
+                roots.push(Path::new(&h).join(".local/share/fonts"));
+                roots.push(Path::new(&h).join(".fonts"));
+            }
+            let mut out = Vec::new();
+            for r in roots {
+                walk(&r, &mut out, 0);
+            }
+            out
+        })
+    }
+    fn walk(dir: &Path, out: &mut Vec<PathBuf>, depth: u8) {
+        if depth > 6 {
+            return;
+        }
+        let Ok(rd) = std::fs::read_dir(dir) else { return };
+        for e in rd.flatten() {
+            let p = e.path();
+            if p.is_dir() {
+                walk(&p, out, depth + 1);
+            } else {
+                out.push(p);
+            }
+        }
+    }
+    pub fn find(names: &[&str]) -> Option<Vec<u8>> {
+        let idx = index();
+        names.iter().find_map(|n| idx.iter().find(|p| p.file_name().is_some_and(|f| f == *n)).and_then(|p| std::fs::read(p).ok()))
     }
 }
 

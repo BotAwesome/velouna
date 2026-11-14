@@ -63,6 +63,59 @@ mod gl_loader {
     }
 }
 
+#[cfg(target_os = "linux")]
+mod gl_loader {
+    use std::ffi::{CStr, c_char, c_void};
+    use std::sync::OnceLock;
+    type GetProc = unsafe extern "C" fn(*const c_char) -> *mut c_void;
+    type GetCurrent = unsafe extern "C" fn() -> *mut c_void;
+    struct Loader {
+        get: Option<GetProc>,
+        lib: Option<libloading::Library>,
+    }
+    unsafe impl Send for Loader {}
+    unsafe impl Sync for Loader {}
+    fn sym<T: Copy>(lib: &libloading::Library, name: &[u8]) -> Option<T> {
+        unsafe { lib.get::<T>(name).ok().map(|s| *s) }
+    }
+    /// eframe (glutin) uses EGL on Wayland and usually on X11, GLX on some
+    /// X11 setups: ask whichever API holds the current context.
+    fn loader() -> &'static Loader {
+        static L: OnceLock<Loader> = OnceLock::new();
+        L.get_or_init(|| unsafe {
+            if let Ok(egl) = libloading::Library::new("libEGL.so.1") {
+                let cur: Option<GetCurrent> = sym(&egl, b"eglGetCurrentContext\0");
+                if cur.is_some_and(|f| !f().is_null()) {
+                    let get: Option<GetProc> = sym(&egl, b"eglGetProcAddress\0");
+                    return Loader { get, lib: Some(egl) };
+                }
+            }
+            if let Ok(glx) = libloading::Library::new("libGLX.so.0").or_else(|_| libloading::Library::new("libGL.so.1")) {
+                let get: Option<GetProc> = sym(&glx, b"glXGetProcAddressARB\0");
+                return Loader { get, lib: Some(glx) };
+            }
+            Loader { get: None, lib: None }
+        })
+    }
+    pub unsafe extern "C" fn get_proc_address(_ctx: *mut c_void, name: *const c_char) -> *mut c_void {
+        static GL: OnceLock<Option<libloading::Library>> = OnceLock::new();
+        unsafe {
+            let l = loader();
+            if let Some(get) = l.get {
+                let p = get(name);
+                if !p.is_null() {
+                    return p;
+                }
+            }
+            let _ = &l.lib;
+            // Core functions straight from the GL library as a last resort.
+            let gl = GL.get_or_init(|| libloading::Library::new("libGL.so.1").or_else(|_| libloading::Library::new("libOpenGL.so.0")).ok());
+            let Some(gl) = gl else { return std::ptr::null_mut() };
+            gl.get::<*mut c_void>(CStr::from_ptr(name).to_bytes_with_nul()).map(|s| *s).unwrap_or(std::ptr::null_mut())
+        }
+    }
+}
+
 struct Inner {
     mpv: Arc<Mpv>,
     ctx: *mut mpv::mpv_render_context,
@@ -149,9 +202,9 @@ impl Inner {
             ctx.request_repaint();
         }
         let api_type = CString::new("opengl").unwrap();
-        #[cfg(any(windows, target_os = "android"))]
+        #[cfg(any(windows, target_os = "android", target_os = "linux"))]
         let gpa: Option<mpv::GetProcAddressFn> = Some(gl_loader::get_proc_address);
-        #[cfg(not(any(windows, target_os = "android")))]
+        #[cfg(not(any(windows, target_os = "android", target_os = "linux")))]
         let gpa: Option<mpv::GetProcAddressFn> = None;
         let mut init = mpv::OpenGlInitParams { get_proc_address: gpa, get_proc_address_ctx: std::ptr::null_mut() };
         let mut params = [

@@ -37,9 +37,21 @@ ureq = { version = "2", features = ["json"] }
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard = "3"
 eframe = { version = "0.32", default-features = false, features = ["accesskit"] }
-keyring = { version = "3", features = ["windows-native"] }
 raw-window-handle = "0.6"
+
+[target.'cfg(windows)'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 rfd = "0.15"
+
+# Linux desktop: Wayland and X11 windows, Wayland clipboard, the Secret
+# Service (GNOME Keyring / KWallet) for the Plex sign-in, file dialogs via
+# the desktop portal. All pure Rust over D-Bus, so the build needs no GTK
+# or libdbus headers and the binary only loads what the desktop has.
+[target.'cfg(target_os = "linux")'.dependencies]
+arboard = { version = "3", features = ["wayland-data-control"] }
+eframe = { version = "0.32", default-features = false, features = ["wayland", "x11"] }
+keyring = { version = "3", features = ["async-secret-service", "async-io", "crypto-rust"] }
+rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.14"

@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Velour Linux Beta</title>
+<style>
+:root { color-scheme: dark; --bg: #121212; --surface: #1f1f1f; --border: #2c2c2c; --text: #e8e8e8; --dim: #9a9a9a; --accent: #d83f5c; }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 720px; margin: 0 auto; padding: 40px 16px 60px; }
+h1 { font-size: 26px; margin: 0 0 4px; } h1 span { color: var(--accent); }
+.sub { color: var(--dim); margin: 0 0 26px; }
+.dl { display: grid; gap: 10px; margin-bottom: 28px; }
+.dl a { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 14px 16px; border-radius: 10px; background: var(--surface); border: 1px solid var(--border); color: var(--text); text-decoration: none; }
+.dl a:hover { border-color: var(--accent); }
+.dl b { display: block; } .dl small { color: var(--dim); }
+.dl .go { color: var(--accent); font-weight: 600; white-space: nowrap; }
+h2 { font-size: 17px; margin: 26px 0 8px; }
+pre { background: #0b0b0b; border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; overflow-x: auto; font: 13.5px/1.5 ui-monospace, "Cascadia Mono", Consolas, monospace; }
+p, li { color: var(--dim); } code { color: var(--text); }
+.note { border-left: 3px solid var(--accent); padding: 8px 12px; background: #1a1416; border-radius: 0 8px 8px 0; color: var(--text); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Velour für <span>Linux</span> – Beta</h1>
+  <p class="sub">Version __VERSION__ · gebaut __DATE__ · nur zum Testen, nicht öffentlich verlinkt</p>
+
+  <div class="dl">
+    <a href="__DEB__"><span><b>__DEB__</b><small>Pop!_OS, Ubuntu, Debian, Mint · installiert libmpv automatisch</small></span><span class="go">Download</span></a>
+    <a href="__TGZ__"><span><b>__TGZ__</b><small>jede Distribution · entpacken und <code>./install.sh</code></small></span><span class="go">Download</span></a>
+    <a href="SHA256SUMS"><span><b>SHA256SUMS</b><small>Prüfsummen</small></span><span class="go">Ansehen</span></a>
+  </div>
+
+  <h2>Pop!_OS / Ubuntu (.deb)</h2>
+  <pre>cd ~/Downloads
+sudo apt install ./__DEB__</pre>
+  <p>apt holt dabei <code>libmpv</code> mit. Danach steht Velour im App-Menü. Entfernen: <code>sudo apt remove velour</code></p>
+
+  <h2>Andere Distributionen (.tar.gz)</h2>
+  <pre>tar xzf __TGZ__
+cd __TGZDIR__
+./install.sh</pre>
+  <p>Vorher libmpv installieren – Fedora: <code>sudo dnf install mpv-libs</code>, Arch: <code>sudo pacman -S mpv</code>.</p>
+
+  <h2>Was testen?</h2>
+  <ul>
+    <li>Startet das Fenster (Wayland/COSMIC und X11)? Ziehen, Größe ändern, Maximieren</li>
+    <li>Video abspielen – Bild, Ton, Hardware-Dekodierung, Vorschaubilder im Seek-Bar (braucht <code>ffmpeg</code>)</li>
+    <li>Datei- und Ordnerdialog, „Öffnen mit“ aus dem Dateimanager, Drag &amp; Drop</li>
+    <li>Plex-Anmeldung (wird im Schlüsselbund gespeichert), TV, Radio</li>
+    <li>„Im Dateimanager zeigen“, Links öffnen</li>
+  </ul>
+  <p class="note">Wenn etwas nicht geht: im Terminal <code>velour</code> starten und die Ausgabe schicken.</p>
+</main>
+</body>
+</html>
