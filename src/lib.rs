@@ -142,7 +142,71 @@ fn work_area() -> Option<egui::Rect> {
 
 /// Desktop entry point; `files` are paths/URLs from the command line.
 /// `phone` opens the phone simulator (touch layout, F9 rotates).
+/// Desktop log: stderr and `<cache>/velour/velour.log` (new each start).
+#[cfg(not(target_os = "android"))]
+mod desktop_log {
+    use std::io::Write;
+    use std::sync::Mutex;
+    struct Logger(Mutex<Option<std::fs::File>>);
+    impl log::Log for Logger {
+        fn enabled(&self, m: &log::Metadata) -> bool {
+            m.level() <= log::Level::Info && (m.target().starts_with("velour") || m.level() <= log::Level::Warn)
+        }
+        fn log(&self, r: &log::Record) {
+            if !self.enabled(r.metadata()) {
+                return;
+            }
+            let line = format!("[{}] {}\n", r.level(), r.args());
+            eprint!("{line}");
+            if let Ok(mut f) = self.0.lock() {
+                if let Some(f) = f.as_mut() {
+                    let _ = f.write_all(line.as_bytes());
+                }
+            }
+        }
+        fn flush(&self) {}
+    }
+    pub fn init() {
+        let dir = crate::platform::cache_dir_override().or_else(|| dirs::cache_dir().map(|d| d.join("velour")));
+        let file = dir.and_then(|d| {
+            let _ = std::fs::create_dir_all(&d);
+            std::fs::File::create(d.join("velour.log")).ok()
+        });
+        let logger: &'static Logger = Box::leak(Box::new(Logger(Mutex::new(file))));
+        if log::set_logger(logger).is_ok() {
+            log::set_max_level(log::LevelFilter::Info);
+        }
+        log::info!("Velour {} ({} {})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+    }
+}
+
+/// The Linux packages bring their own OpenSSL (inside libmpv and ffmpeg),
+/// built on Ubuntu, which looks for CA certificates in /usr/lib/ssl. Point
+/// it at the distribution's bundle so https streams verify everywhere;
+/// ffmpeg, ffprobe and yt-dlp inherit the variable.
+#[cfg(target_os = "linux")]
+fn set_cert_bundle() {
+    if std::env::var_os("SSL_CERT_FILE").is_some() {
+        return;
+    }
+    let bundles = [
+        "/etc/ssl/certs/ca-certificates.crt",                // Debian, Ubuntu, Pop!_OS, Arch, Gentoo
+        "/etc/pki/tls/certs/ca-bundle.crt",                  // Fedora, RHEL
+        "/etc/ssl/ca-bundle.pem",                            // openSUSE
+        "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem", // Fedora (newer)
+        "/etc/ssl/cert.pem",                                 // Alpine, Void
+    ];
+    match bundles.iter().find(|p| std::path::Path::new(p).is_file()) {
+        // SAFETY: runs first thing in run_desktop, before any thread starts.
+        Some(p) => unsafe { std::env::set_var("SSL_CERT_FILE", p) },
+        None => log::warn!("no CA certificate bundle found; https streams may fail (install ca-certificates)"),
+    }
+}
+
 pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
+    desktop_log::init();
+    #[cfg(target_os = "linux")]
+    set_cert_bundle();
     mobile::set_simulator(phone);
     let size = if phone { [390.0, 800.0] } else { [1280.0, 760.0] };
     let mut viewport = egui::ViewportBuilder::default()

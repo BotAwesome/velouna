@@ -124,6 +124,15 @@ type FnFree = unsafe extern "C" fn(*mut c_void);
 type FnFreeNodeContents = unsafe extern "C" fn(*mut RawNode);
 type FnErrorString = unsafe extern "C" fn(c_int) -> *const c_char;
 type FnClientApiVersion = unsafe extern "C" fn() -> std::ffi::c_ulong;
+type FnRequestLogMessages = unsafe extern "C" fn(*mut mpv_handle, *const c_char) -> c_int;
+
+#[repr(C)]
+struct RawEventLogMessage {
+    prefix: *const c_char,
+    level: *const c_char,
+    text: *const c_char,
+    log_level: c_int,
+}
 
 type FnRenderCreate =
     unsafe extern "C" fn(*mut *mut mpv_render_context, *mut mpv_handle, *mut RenderParam) -> c_int;
@@ -162,13 +171,14 @@ pub struct Api {
     pub render_update: FnRenderUpdate,
     pub render_free: FnRenderFree,
     pub render_report_swap: FnRenderReportSwap,
+    request_log_messages: Option<FnRequestLogMessages>,
 }
 
 fn candidate_paths() -> Vec<PathBuf> {
     #[cfg(target_os = "android")]
     let names = ["libmpv.so"];
-    // Linux: the system's libmpv (Debian/Ubuntu: libmpv2, older libmpv1);
-    // the AppImage ships its own next to the executable.
+    // Linux: the packages bring their own in <exe dir>/lib; otherwise the
+    // system's libmpv (Debian/Ubuntu: libmpv2, older libmpv1).
     #[cfg(target_os = "linux")]
     let names = ["libmpv.so.2", "libmpv.so.1", "libmpv.so"];
     #[cfg(not(any(target_os = "android", target_os = "linux")))]
@@ -226,8 +236,14 @@ impl Api {
         let mut last_err = String::from(t!("libmpv-2.dll nicht gefunden"));
         for p in candidate_paths() {
             match unsafe { Library::new(&p) } {
-                Ok(lib) => return Self::from_lib(lib, p),
-                Err(e) => last_err = format!("{}: {e}", p.display()),
+                Ok(lib) => {
+                    log::info!("libmpv: {}", p.display());
+                    return Self::from_lib(lib, p);
+                }
+                Err(e) => {
+                    log::warn!("libmpv {}: {e}", p.display());
+                    last_err = format!("{}: {e}", p.display());
+                }
             }
         }
         #[cfg(target_os = "linux")]
@@ -261,6 +277,8 @@ impl Api {
         let render_update: FnRenderUpdate = sym!(lib, "mpv_render_context_update");
         let render_free: FnRenderFree = sym!(lib, "mpv_render_context_free");
         let render_report_swap: FnRenderReportSwap = sym!(lib, "mpv_render_context_report_swap");
+        let request_log_messages: Option<FnRequestLogMessages> =
+            unsafe { lib.get::<FnRequestLogMessages>(b"mpv_request_log_messages\0").ok().map(|s| *s) };
         Ok(Api {
             _lib: lib,
             path,
@@ -286,6 +304,7 @@ impl Api {
             render_update,
             render_free,
             render_report_swap,
+            request_log_messages,
         })
     }
 }
@@ -453,6 +472,13 @@ impl Mpv {
         if handle.is_null() {
             return Err(t!("mpv_create() fehlgeschlagen").into());
         }
+        // mpv's own warnings and errors end up in Velour's log
+        // (VELOUR_MPV_LOG=v for more).
+        if let Some(req) = api.request_log_messages {
+            let level = std::env::var("VELOUR_MPV_LOG").unwrap_or_else(|_| "warn".into());
+            let level = c(&level);
+            unsafe { req(handle, level.as_ptr()) };
+        }
         Ok(Mpv { api, handle })
     }
 
@@ -572,6 +598,20 @@ impl Mpv {
         let e = match ev.event_id {
             0 => return None,
             1 => Event::Shutdown,
+            2 => {
+                let m = unsafe { &*(ev.data as *const RawEventLogMessage) };
+                let (prefix, text) = unsafe { (cstr(m.prefix), cstr(m.text)) };
+                let text = text.trim_end();
+                // MPV_LOG_LEVEL_ERROR = 20, WARN = 30
+                if m.log_level <= 20 {
+                    log::error!("mpv/{prefix}: {text}");
+                } else if m.log_level <= 30 {
+                    log::warn!("mpv/{prefix}: {text}");
+                } else {
+                    log::info!("mpv/{prefix}: {text}");
+                }
+                Event::Other(2)
+            }
             5 => Event::CommandReply { userdata: ev.reply_userdata, error: ev.error },
             6 => Event::StartFile,
             7 => {

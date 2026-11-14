@@ -287,7 +287,8 @@ pub struct App {
 
 fn init_mpv(s: &Settings) -> Result<Arc<Mpv>, String> {
     let mpv = Mpv::create()?;
-    let opts: Vec<(&str, String)> = vec![
+    #[allow(unused_mut)]
+    let mut opts: Vec<(&str, String)> = vec![
         ("vo", "libmpv".into()),
         ("hwdec", if s.hwdec { crate::platform::HWDEC.into() } else { "no".into() }),
         ("keep-open", "yes".into()),
@@ -317,6 +318,11 @@ fn init_mpv(s: &Settings) -> Result<Arc<Mpv>, String> {
         ("sub-font", s.sub_font.clone()),
         ("speed", format!("{}", s.default_speed)),
     ];
+    // Linux packages bring their own yt-dlp next to the executable.
+    #[cfg(target_os = "linux")]
+    if let Some(y) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("yt-dlp"))).filter(|p| p.is_file()) {
+        opts.push(("script-opts", format!("ytdl_hook-ytdl_path={}", y.display())));
+    }
     for (k, v) in &opts {
         let _ = mpv.set_option(k, v);
     }
