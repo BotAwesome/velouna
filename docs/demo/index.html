@@ -7,6 +7,17 @@
 <meta name="description" content="Try Velour's look and feel in your browser: library, player, TV, radio and a simulated Plex sign-in. Music by Bass Alley FM.">
 <meta name="theme-color" content="#121212">
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
+<script>
+/* ?device=android forces the phone layout (used by android.html), ?embed hides the banner. */
+(function () {
+  var q = new URLSearchParams(location.search), h = document.documentElement;
+  window.FORCE_PHONE = q.get("device") === "android";
+  window.EMBED = q.has("embed");
+  window.applyDevice = function () { h.classList.toggle("phone", window.FORCE_PHONE || matchMedia("(max-width: 760px)").matches); };
+  if (window.EMBED) h.classList.add("embed");
+  window.applyDevice();
+})();
+</script>
 <link rel="stylesheet" href="icons/regular.css">
 <link rel="stylesheet" href="icons/fill.css">
 <!-- Icons: Phosphor Icons (MIT), https://phosphoricons.com -->
@@ -62,6 +73,8 @@ i.ph { font-size: 18px; line-height: 1; }
 .banner a { text-decoration: none; padding: 4px 10px; border-radius: var(--r); color: var(--text); }
 .banner a:hover { background: rgba(255,255,255,.06); }
 .banner a.dl { background: var(--accent); color: #fff; font-weight: 600; }
+.banner a.dev { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--accent-dim); }
+.banner a.dev i { font-size: 15px; color: var(--accent); }
 .banner a.dl:hover { filter: brightness(1.08); background: var(--accent); }
 
 /* ------------------------------------------------------------ app frame */
@@ -315,68 +328,108 @@ input[type=range].slider { accent-color: var(--accent); width: 150px; }
 .guide-row .tm { font: 12.5px var(--mono); color: var(--text-dim); }
 .guide-row.now .tm { color: var(--accent); }
 
-/* ------------------------------------------------------------ phone */
-.tabbar, .m-head, .more-list { display: none; }
-@media (max-width: 760px) {
-  :root { --banner-h: 30px; --bottom-h: 0px; }
-  .banner { font-size: 12px; gap: 8px; padding: 0 10px; }
-  .banner .txt .long, .banner .home { display: none; }
-  .banner a { padding: 3px 8px; }
-  .app { grid-template-columns: 1fr !important; grid-template-rows: auto 1fr auto auto; grid-template-areas: "top" "main" "mini" "tabs"; }
-  .topbar, .sidebar { display: none; }
-  .m-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px 6px; grid-area: top; background: var(--bg); }
-  .m-head svg { width: 26px; height: 26px; }
-  .m-head .tt { font-size: 22px; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .m-head .tb-btn { width: 40px; height: 40px; }
-  .m-head .tb-btn i { font-size: 24px; }
-  .view { padding: 12px 16px 24px; }
-  h1.welcome { font-size: 24px; }
-  h1.welcome svg { display: none; }
-  .card { width: 72vw; max-width: 300px; }
-  .grid { grid-template-columns: 1fr; }
-  .tiles { grid-template-columns: repeat(2, 1fr); }
-  .lrow { grid-template-columns: 30px 1fr 64px; height: 54px; }
-  .toolbar { flex-wrap: wrap; row-gap: 10px; }
-  .toolbar .cnt { width: 100%; }
-  .lrow .f { display: none; }
-  .bottom { display: none; grid-area: mini; height: 58px; gap: 10px; padding: 0 12px; background: var(--surface); border-top: 1px solid var(--border); }
-  .bottom.has { display: flex; }
-  .bottom > :not(.mini-keep) { display: none; }
-  .mini-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
-  #mini-play { display: grid; width: 40px; height: 40px; }
-  #mini-play i { font-size: 22px; }
-  .mini-info img { width: 64px; height: 36px; object-fit: cover; border-radius: 3px; }
-  .mini-info .t { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mini-info .s { font-size: 12px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .mini-line { position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--accent); transform-origin: left; }
-  .bottom { position: relative; }
-  .tabbar { display: grid; grid-area: tabs; grid-template-columns: repeat(5, 1fr); background: var(--panel); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
-  .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; color: var(--text-dim); }
-  .tab .pill { width: 60px; height: 30px; border-radius: 99px; display: grid; place-items: center; }
-  .tab i { font-size: 22px; }
-  .tab.on { color: var(--text); }
-  .tab.on .pill { background: var(--accent-dim); }
-  .tab.on i { color: var(--accent); }
-  .more-list { display: block; }
-  .queue { width: 100%; }
-  .modal { grid-template-columns: 1fr; height: 100%; }
-  .m-side { display: none; }
-  .modal.settings .m-side.open { display: block; }
-  .preview { display: none !important; }
-  /* phone player: full screen with its own controls */
-  .stage.on { position: fixed; inset: var(--banner-h) 0 0 0; z-index: 50; }
-  .p-ctrl { display: flex !important; }
-}
-.p-ctrl { display: none; position: absolute; left: 0; right: 0; bottom: 0; flex-direction: column; gap: 8px; padding: 14px 16px calc(16px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.85)); }
-.p-ctrl .tl { display: flex; justify-content: space-between; font: 12px var(--mono); color: #ccc; }
-.p-ctrl .btns { display: flex; justify-content: center; align-items: center; gap: 26px; }
-.p-ctrl .btns i { font-size: 30px; }
-.p-ctrl .big { width: 64px; height: 64px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; }
-.p-top { position: absolute; top: 0; left: 0; right: 0; display: none; align-items: center; gap: 10px; padding: 10px 12px; background: linear-gradient(rgba(0,0,0,.7), transparent); }
-.p-top .t { font-weight: 600; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-@media (max-width: 760px) { .p-top { display: flex; } }
-.p-seek { height: 28px; position: relative; touch-action: none; }
+/* ------------------------------------------------------------ phone (the Android layout) */
+.tabbar, .m-head, .more-list, .pp, .gest, .unlock { display: none; }
+.chip .top, .chip .ic { display: contents; }
+.chip .kind { display: none; }
+.chip b { font-weight: 400; }
+html.embed { --banner-h: 0px; }
+html.embed .banner { display: none; }
+html.phone { --banner-h: 30px; --bottom-h: 0px; }
+html.phone.embed { --banner-h: 0px; }
+html.phone .banner { font-size: 12px; gap: 8px; padding: 0 10px; }
+html.phone .banner .txt .long, html.phone .banner .home, html.phone .banner .dev { display: none; }
+html.phone .banner a { padding: 3px 8px; }
+html.phone .app { grid-template-columns: 1fr !important; grid-template-rows: auto 1fr auto auto; grid-template-areas: "top" "main" "mini" "tabs"; }
+html.phone .topbar, html.phone .sidebar { display: none; }
+html.phone .m-head { display: flex; align-items: center; gap: 12px; padding: 14px 16px 6px; grid-area: top; background: var(--bg); }
+html.phone .m-head svg { width: 26px; height: 26px; }
+html.phone .m-head .tt { font-size: 22px; font-weight: 500; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.phone .m-head .tb-btn { width: 40px; height: 40px; }
+html.phone .m-head .tb-btn i { font-size: 24px; }
+html.phone .view { padding: 12px 16px 24px; }
+html.phone h1.welcome { font-size: 24px; }
+html.phone h1.welcome svg { display: none; }
+html.phone .card { width: 72vw; max-width: 300px; }
+html.phone .grid { grid-template-columns: 1fr; }
+html.phone .tiles { grid-template-columns: repeat(2, 1fr); }
+html.phone .lrow { grid-template-columns: 30px 1fr 64px; height: 54px; }
+html.phone .toolbar { flex-wrap: wrap; row-gap: 10px; }
+html.phone .toolbar .cnt { width: 100%; }
+html.phone .lrow .f { display: none; }
+html.phone .row-wrap.coll { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+html.phone .row-wrap.coll .chip { height: 116px; flex-direction: column; align-items: stretch; justify-content: space-between; padding: 14px; gap: 0; border-radius: 10px; }
+html.phone .chip .top { display: flex; justify-content: space-between; align-items: flex-start; }
+html.phone .chip .ic { display: grid; width: 38px; height: 38px; border-radius: 9px; background: var(--accent-soft); place-items: center; }
+html.phone .chip .kind { display: block; font-size: 12.5px; color: var(--text-dim); }
+html.phone .chip b { font-weight: 600; font-size: 15px; text-align: left; line-height: 1.25; }
+html.phone .bottom { display: none; position: relative; grid-area: mini; height: 58px; gap: 10px; padding: 0 12px; background: var(--surface); border-top: 1px solid var(--border); }
+html.phone .bottom.has { display: flex; }
+html.phone .bottom > :not(.mini-keep) { display: none; }
+html.phone .mini-info { display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0; }
+html.phone #mini-play { display: grid; width: 40px; height: 40px; }
+html.phone #mini-play i { font-size: 22px; }
+html.phone .mini-info img { width: 64px; height: 36px; object-fit: cover; border-radius: 3px; }
+html.phone .mini-info .t { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.phone .mini-info .s { font-size: 12px; color: var(--text-faint); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+html.phone .mini-line { position: absolute; left: 0; right: 0; top: -2px; height: 2px; background: var(--accent); transform-origin: left; }
+html.phone .tabbar { display: grid; grid-area: tabs; grid-template-columns: repeat(5, 1fr); background: var(--panel); border-top: 1px solid var(--border); padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); }
+html.phone .tab { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 12px; color: var(--text-dim); }
+html.phone .tab .pill { width: 60px; height: 30px; border-radius: 99px; display: grid; place-items: center; }
+html.phone .tab i { font-size: 22px; }
+html.phone .tab.on { color: var(--text); }
+html.phone .tab.on .pill { background: var(--accent-dim); }
+html.phone .tab.on i { color: var(--accent); }
+html.phone .more-list { display: block; }
+html.phone .queue { width: 100%; z-index: 60; position: fixed; inset: var(--banner-h) 0 0 0; }
+html.phone .modal { grid-template-columns: 1fr; height: 100%; }
+html.phone .m-side { display: none; }
+html.phone .preview { display: none !important; }
+
+/* phone player: full screen, controls over the picture, touch gestures */
+html.phone .stage.on { position: fixed; inset: var(--banner-h) 0 0 0; z-index: 50; }
+html.phone .stage .pp { display: block; position: absolute; inset: 0; transition: opacity .2s; }
+html.phone .stage.hidectl .pp { opacity: 0; pointer-events: none; }
+html.phone .stage.locked .pp { display: none; }
+html.phone .gest { display: block; position: absolute; inset: 0; pointer-events: none; }
+html.phone .stage.locked .unlock.on { display: grid; }
+.stage video, .stage .cover { filter: brightness(var(--bright, 1)); }
+.pp button { color: #fff; }
+.pp .ib { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; }
+.pp .ib i { font-size: 22px; }
+.pp .ib.on { color: var(--accent); }
+.pp-top { position: absolute; top: 0; left: 0; right: 0; display: flex; align-items: center; gap: 4px; padding: 8px 8px 34px; background: linear-gradient(rgba(0,0,0,.65), transparent); }
+.pp-top .t { flex: 1; font-weight: 600; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 4px; }
+.pp-mid { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); display: flex; justify-content: center; align-items: center; gap: 28px; pointer-events: none; }
+.pp-mid button { pointer-events: auto; }
+.pp-mid .rb { width: 58px; height: 58px; border-radius: 50%; background: rgba(30,30,30,.72); display: grid; place-items: center; }
+.pp-mid .rb i { font-size: 24px; }
+.pp-mid .big { width: 80px; height: 80px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; }
+.pp-mid .big i { font-size: 32px; }
+.pp-bot { position: absolute; left: 0; right: 0; bottom: 0; padding: 34px 8px calc(6px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgba(0,0,0,.72)); }
+.pp-seek { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #fff; padding: 0 6px; }
+.pp-seek > span { min-width: 38px; text-align: center; font-variant-numeric: tabular-nums; }
+.pp-row { display: flex; align-items: center; gap: 4px; }
+.pp-row .sp { flex: 1; }
+.p-seek { flex: 1; height: 30px; position: relative; touch-action: none; }
 .p-seek canvas { width: 100%; height: 100%; display: block; }
+.ripple { position: absolute; top: 0; bottom: 0; width: 38%; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; color: #fff; font-weight: 600; background: rgba(255,255,255,.1); opacity: 0; transition: opacity .45s; }
+.ripple.l { left: 0; border-radius: 0 100% 100% 0 / 0 50% 50% 0; }
+.ripple.r { right: 0; border-radius: 100% 0 0 100% / 50% 0 0 50%; }
+.ripple.on { opacity: 1; transition: none; }
+.ripple i { font-size: 30px; }
+.gbox { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: rgba(20,20,20,.88); border-radius: 12px; padding: 12px 16px; display: none; align-items: center; gap: 12px; min-width: 200px; color: #fff; }
+.gbox.on { display: flex; }
+.gbox i { font-size: 22px; }
+.gbox .gb { flex: 1; height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; overflow: hidden; }
+.gbox .gb span { display: block; height: 100%; background: var(--accent); }
+.gbox #gbox-v { min-width: 40px; text-align: right; font-size: 13px; font-variant-numeric: tabular-nums; }
+.unlock { position: absolute; left: 18px; top: 50%; transform: translateY(-50%); width: 54px; height: 54px; border-radius: 50%; background: rgba(30,30,30,.82); color: #fff; place-items: center; }
+.unlock i { font-size: 24px; }
+.sleep-list { min-width: 190px; }
+.sleep-list button { display: block; width: 100%; text-align: left; padding: 9px 12px; border-radius: var(--r); font-size: 13.5px; }
+.sleep-list button:hover { background: var(--hover); }
+.sleep-list button.on { color: var(--accent); }
 </style>
 </head>
 <body>
@@ -386,6 +439,7 @@ input[type=range].slider { accent-color: var(--accent); width: 150px; }
   <span class="txt"><b>Look &amp; feel only.</b><span class="long"> Runs in your browser – settings do nothing, Plex is simulated, TV and radio play demo music by Bass Alley FM.</span></span>
   <span class="sp"></span>
   <a class="home" href="../">Website</a>
+  <a class="dev" href="android.html"><i class="ph ph-android-logo"></i> Android version</a>
   <a class="dl" href="https://github.com/BotAwesome/velour/releases/latest">Get Velour</a>
 </div>
 
@@ -419,18 +473,16 @@ input[type=range].slider { accent-color: var(--accent); width: 150px; }
     <div class="stage" id="stage">
       <video id="media" playsinline preload="metadata"></video>
       <div class="cover"><div class="cover-card"><img id="cover-img" alt=""><div class="t" id="cover-t"></div><div class="s" id="cover-s"></div></div></div>
-      <div class="p-top"><button class="tb-btn" id="p-back" aria-label="Back"><i class="ph ph-caret-down"></i></button><span class="t" id="p-title"></span><button class="tb-btn" data-queue aria-label="Queue"><i class="ph ph-queue"></i></button></div>
-      <div class="p-ctrl">
-        <div class="p-seek" id="p-seek"><canvas></canvas></div>
-        <div class="tl"><span id="p-pos">0:00</span><span id="p-dur">0:00</span></div>
-        <div class="btns">
-          <button data-act="back10" aria-label="Back 10 s"><i class="ph ph-arrow-counter-clockwise"></i></button>
-          <button data-act="prev" aria-label="Previous"><i class="ph ph-skip-back"></i></button>
-          <button class="big" data-act="toggle" aria-label="Play or pause"><i class="ph-fill ph-play" id="p-play"></i></button>
-          <button data-act="next" aria-label="Next"><i class="ph ph-skip-forward"></i></button>
-          <button data-act="fwd10" aria-label="Forward 10 s"><i class="ph ph-arrow-clockwise"></i></button>
+      <div class="pp" id="pp">
+        <div class="pp-top"><button class="ib" id="p-back" aria-label="Back"><i class="ph ph-caret-down"></i></button><span class="t" id="p-title"></span><button class="ib" id="sleep-btn" aria-label="Sleep timer"><i class="ph ph-moon"></i></button><button class="ib" id="p-eq" aria-label="Equalizer"><i class="ph ph-sliders-horizontal"></i></button><button class="ib" data-queue aria-label="Queue"><i class="ph ph-queue"></i></button></div>
+        <div class="pp-mid"><button class="rb" data-act="prev" aria-label="Previous"><i class="ph-fill ph-skip-back"></i></button><button class="big" data-act="toggle" aria-label="Play or pause"><i class="ph-fill ph-play" id="p-play"></i></button><button class="rb" data-act="next" aria-label="Next"><i class="ph-fill ph-skip-forward"></i></button></div>
+        <div class="pp-bot">
+          <div class="pp-seek"><span id="p-pos">0:00</span><div class="p-seek" id="p-seek"><canvas></canvas></div><span id="p-dur">0:00</span></div>
+          <div class="pp-row"><button class="ib" id="lock-btn" aria-label="Lock the screen"><i class="ph ph-lock-simple-open"></i></button><button class="ib" id="rep-btn" aria-label="Repeat"><i class="ph ph-repeat"></i></button><span class="sp"></span><button class="ib" data-demo="Subtitles: the demo songs have none" aria-label="Subtitles"><i class="ph ph-chat-centered-text"></i></button><button class="ib" id="rot-btn" aria-label="Rotate"><i class="ph ph-device-rotate"></i></button></div>
         </div>
       </div>
+      <div class="gest"><div class="ripple l" id="rip-l"><i class="ph ph-rewind"></i><span>10 s</span></div><div class="ripple r" id="rip-r"><i class="ph ph-fast-forward"></i><span>10 s</span></div><div class="gbox" id="gbox"><i id="gbox-i" class="ph ph-sun"></i><div class="gb"><span id="gbox-bar"></span></div><span id="gbox-v"></span></div></div>
+      <button class="unlock" id="unlock" aria-label="Unlock"><i class="ph ph-lock-simple"></i></button>
     </div>
     <div class="queue" id="queue">
       <div class="qh"><i class="ph ph-queue"></i>Queue<span class="sp"></span><button class="tb-btn" data-demo="Shuffle works in the app" aria-label="Shuffle"><i class="ph ph-shuffle"></i></button><button class="tb-btn" data-queue aria-label="Close"><i class="ph ph-x"></i></button></div>
@@ -524,7 +576,7 @@ const fmt = (t, long) => {
   const p = n => String(n).padStart(2, "0");
   return long ? `${p(h)}:${p(m)}:${p(s)}` : (h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`);
 };
-const isPhone = () => matchMedia("(max-width: 760px)").matches;
+const isPhone = () => document.documentElement.classList.contains("phone");
 const V_LOGO = `<svg viewBox="0 0 96 96"><path fill="var(--accent)" d="M12 14Q27 52 46 82L50 82Q39 47 31 14Z"/><path fill="var(--accent)" d="M84 14Q69 52 50 82L46 82Q57 47 65 14Z"/></svg>`;
 
 /* ------------------------------------------------------------------ OSD */
@@ -622,11 +674,8 @@ const VIEWS = {
       <div class="row-wrap"><button class="pill-btn" data-demo="Opening your own files works in the app"><i class="ph ph-file-plus"></i>Open file</button><button class="pill-btn" data-go="videos"><i class="ph ph-folder-open"></i>Open folder</button><button class="pill-btn" data-go="network"><i class="ph ph-broadcast"></i>Network stream</button><button class="pill-btn" data-demo="The clipboard is only read in the app"><i class="ph ph-clipboard-text"></i>From clipboard</button></div>`;
     if (cont.length) h += `<div class="sec-h">Continue watching</div><div class="shelf">${cont.map(s => cardHTML(s, { from: "home" })).join("")}</div>`;
     if (st.plex === "in") h += `<div class="sec-h">Continue on Demo server <button class="more" data-go="plex">Show all <i class="ph ph-caret-right"></i></button></div><div class="shelf">${["wired-this-way", "paper-thin", "last-words"].map(id => cardHTML(S[id], { from: "plex", sub: "Music video · " + fmt(S[id].dur) })).join("")}</div>`;
-    h += `<div class="sec-h">Collections</div><div class="row-wrap">
-      <button class="chip" data-go="videos"><i class="ph ph-folder"></i>Bass Alley FM</button>
-      <button class="chip" data-go="playlists"><i class="ph ph-playlist"></i>Late night</button>
-      <button class="chip" data-go="tv"><i class="ph ph-television-simple"></i>Public TV channels</button>
-      <button class="chip" data-go="radio"><i class="ph ph-radio"></i>Radio stations</button></div>`;
+    h += `<div class="sec-h">Collections</div><div class="row-wrap coll">${[["videos", "ph-push-pin", "Pinned", "Bass Alley FM"], ["playlists", "ph-playlist", "Playlist", "Late night"], ["tv", "ph-television-simple", "TV channels", "Public TV channels"], ["radio", "ph-radio", "Radio", "Radio stations"]]
+        .map(([k, ic, kind, l]) => `<button class="chip" data-go="${k}"><span class="top"><span class="ic"><i class="ph ${ic}"></i></span><span class="kind">${kind}</span></span><b>${l}</b></button>`).join("")}</div>`;
     if (st.history.length) h += `<div class="sec-h">Recently played</div>${recentRows(st.history.slice(0, 6))}`;
     return h;
   },
@@ -825,7 +874,9 @@ media.addEventListener("ended", () => {
     if (st.view === "radio" || st.view === "tv") render();
     return;
   }
+  if (sleepEnd) { sleepEnd = false; setSleep(0); remember(); media.pause(); osd("Sleep timer: good night"); return; }
   if (st.cur.i + 1 < st.cur.list.length) next(1);
+  else if (st.repeat === 1) { st.cur.i = -1; next(1); }
   else { remember(); media.pause(); osd("Done"); updatePlayIcons(); }
 });
 function toggle() {
@@ -893,7 +944,7 @@ function drawSeek(canvas, compact) {
   if (s) { c.fillStyle = accent; c.fillRect(Math.round(frac * r.width) - 1, 2, 2.5, r.height - 4); }
 }
 function drawAll() {
-  drawSeek($("#seek canvas")); drawSeek($("#p-seek canvas"), true);
+  drawSeek($("#seek canvas")); drawSeek($("#p-seek canvas"));
   const s = curSong(); const pos = media.currentTime || 0; const dur = s ? (media.duration || s.dur) : 0;
   const live = st.cur && st.cur.kind === "live";
   $("#t-pos").textContent = fmt(pos, true); $("#t-dur").textContent = live ? "LIVE" : fmt(dur, true);
@@ -955,7 +1006,14 @@ function renderQueue() {
 }
 function toggleQueue() { renderQueue(); $("#queue").classList.toggle("on"); }
 
-/* EQ popover */
+/* popovers (equalizer, sleep timer) */
+function placePop(p, btn) {
+  const r = btn.getBoundingClientRect();
+  p.style.left = "auto"; p.style.right = Math.max(8, innerWidth - r.right) + "px";
+  if (r.top > innerHeight / 2) { p.style.top = "auto"; p.style.bottom = (innerHeight - r.top + 8) + "px"; }
+  else { p.style.bottom = "auto"; p.style.top = (r.bottom + 8) + "px"; }
+  p.classList.add("on");
+}
 function toggleEq(btn) {
   const p = $("#eq-pop");
   if (p.classList.contains("on")) { p.classList.remove("on"); return; }
@@ -963,9 +1021,7 @@ function toggleEq(btn) {
   p.innerHTML = `<h4>Equalizer</h4><div class="row" style="margin-bottom:10px">${["Flat", "Bass", "Vocal", "Night"].map((n, i) => `<button class="ghost ${i ? "" : "on"}" data-eqp="${n}">${n}</button>`).join("")}</div>
     <div class="eq">${bands.map(b => `<div class="b"><input type="range" min="-12" max="12" value="0" aria-label="${b} Hz"><span>${b}</span></div>`).join("")}</div>
     <p style="font-size:11.5px;color:var(--text-faint);margin:10px 0 0">Demo: the sliders move, the sound stays the same.</p>`;
-  const r = btn.getBoundingClientRect();
-  p.style.right = (innerWidth - r.right) + "px"; p.style.bottom = (innerHeight - r.top + 8) + "px"; p.style.left = "auto"; p.style.top = "auto";
-  p.classList.add("on");
+  placePop(p, btn);
   p.querySelectorAll("[data-eqp]").forEach(b => b.onclick = () => {
     const pre = { Flat: [0,0,0,0,0,0,0,0,0,0], Bass: [7,6,4,2,0,0,0,0,1,1], Vocal: [-2,-1,0,2,4,4,3,1,0,-1], Night: [3,2,1,0,-1,-1,0,1,2,2] }[b.dataset.eqp];
     p.querySelectorAll("input").forEach((inp, i) => inp.value = pre[i]);
@@ -1049,21 +1105,22 @@ document.addEventListener("click", e => {
   if (d.enqueue) { if (st.cur && st.cur.kind === "file") { st.cur.list = [...st.cur.list.slice(0, st.cur.i + 1), d.enqueue, ...st.cur.list.slice(st.cur.i + 1)]; renderQueue(); osd("Plays next"); } else playFile([d.enqueue], 0); return; }
   if (d.qi) { remember(); st.cur.i = +d.qi; st.cur.id = st.cur.list[st.cur.i]; load(st.cur.id, 0, st.cur.audio); return; }
 });
-function seekBy(s) {
+function seekBy(s, quiet) {
   if (!st.cur) return;
   if (st.cur.kind === "live") { osd("Live – you can't seek a channel"); return; }
   media.currentTime = Math.max(0, Math.min((media.duration || 0) - 1, media.currentTime + s));
-  osd(`${s > 0 ? "+" : "−"}${Math.abs(s)} s  ·  ${fmt(media.currentTime, true)}`);
+  if (!quiet) osd(`${s > 0 ? "+" : "−"}${Math.abs(s)} s  ·  ${fmt(media.currentTime, true)}`);
+  drawAll();
 }
 $("#side-toggle").onclick = () => { st.set.sidebar = !st.set.sidebar; $("#app").classList.toggle("no-side", !st.set.sidebar); };
 $("#crumb").onclick = () => { if ($("#stage").classList.contains("on")) { showStage(false); render(); } else go("home"); };
 $("#p-back").onclick = () => { showStage(false); render(); };
 $("#wave-btn").onclick = () => { st.wave = !st.wave; st.set.waveform = st.wave; syncWave(); osd(st.wave ? "Waveform on" : "Waveform off"); };
 $("#eq-btn").onclick = e => { e.stopPropagation(); toggleEq($("#eq-btn")); };
-document.addEventListener("pointerdown", e => { if (!e.target.closest("#eq-pop, #eq-btn")) $("#eq-pop").classList.remove("on"); });
+document.addEventListener("pointerdown", e => { if (!e.target.closest("#eq-pop, #eq-btn, #p-eq, #sleep-btn")) $("#eq-pop").classList.remove("on"); });
 $("#fs-btn").onclick = fullscreen;
 $("#mini-info").onclick = () => { if (st.cur) showStage(true); };
-$("#stage").addEventListener("dblclick", fullscreen);
+$("#stage").addEventListener("dblclick", () => { if (!isPhone()) fullscreen(); });
 $("#stage").addEventListener("click", e => { if (e.target === media && !isPhone()) toggle(); });
 function fullscreen() {
   if (document.fullscreenElement) document.exitFullscreen();
@@ -1083,6 +1140,84 @@ document.addEventListener("keydown", e => {
   else if (e.key === "p") next(-1);
 });
 setInterval(() => { if (st.view === "tv" && !$("#view").classList.contains("hide")) render(); }, 15000);
+
+/* ------------------------------------------------------------------ Android player: gestures, lock, repeat, sleep, rotate */
+const stage = $("#stage");
+let hideT, gboxT, tapT, g = null, lastTap = { t: 0, side: "" }, bright = 1, sleepT, sleepEnd = false;
+st.repeat = 0; st.locked = false;
+function showCtl(on = true) {
+  stage.classList.toggle("hidectl", !on);
+  clearTimeout(hideT);
+  if (on && !media.paused) hideT = setTimeout(() => stage.classList.add("hidectl"), 3500);
+}
+media.addEventListener("play", () => showCtl(true));
+media.addEventListener("pause", () => showCtl(true));
+function gbox(icon, frac, text) {
+  $("#gbox-i").className = "ph " + icon; $("#gbox-bar").style.width = Math.round(frac * 100) + "%"; $("#gbox-v").textContent = text;
+  $("#gbox").classList.add("on"); clearTimeout(gboxT); gboxT = setTimeout(() => $("#gbox").classList.remove("on"), 700);
+}
+stage.addEventListener("pointerdown", e => {
+  if (!isPhone() || e.target.closest("button, .p-seek")) return;
+  const r = stage.getBoundingClientRect(); const fx = (e.clientX - r.left) / r.width;
+  g = { x: e.clientX, y: e.clientY, h: r.height, side: fx < .5 ? "l" : "r", fx, swipe: false, v0: fx < .5 ? bright : st.vol };
+});
+stage.addEventListener("pointermove", e => {
+  if (!g || st.locked) return;
+  const dy = e.clientY - g.y, dx = e.clientX - g.x;
+  if (!g.swipe && Math.abs(dy) > 14 && Math.abs(dy) > Math.abs(dx)) g.swipe = true;
+  if (!g.swipe) return;
+  // Left half: brightness, right half: volume (like the app).
+  const v = Math.min(1, Math.max(g.side === "l" ? .15 : 0, g.v0 - dy / (g.h * .6)));
+  if (g.side === "l") { bright = v; stage.style.setProperty("--bright", bright); gbox("ph-sun", (v - .15) / .85, Math.round(v * 100) + " %"); }
+  else { setVol(v); gbox(v === 0 ? "ph-speaker-slash" : "ph-speaker-high", v, Math.round(v * 100) + " %"); }
+});
+stage.addEventListener("pointercancel", () => { g = null; });
+stage.addEventListener("pointerup", () => {
+  if (!g) return; const was = g; g = null;
+  if (was.swipe) return;
+  if (st.locked) { const u = $("#unlock"); u.classList.add("on"); clearTimeout(u._t); u._t = setTimeout(() => u.classList.remove("on"), 2200); return; }
+  const now = Date.now(); const edge = was.fx < .38 ? "l" : was.fx > .62 ? "r" : "";
+  if (edge && now - lastTap.t < 320 && lastTap.side === edge) {
+    // Double tap on an edge: 10 s back or forward.
+    clearTimeout(tapT); lastTap = { t: 0, side: "" };
+    seekBy(edge === "l" ? -10 : 10, true);
+    const rp = $("#rip-" + edge); rp.classList.add("on"); setTimeout(() => rp.classList.remove("on"), 80);
+    return;
+  }
+  lastTap = { t: now, side: edge };
+  clearTimeout(tapT); tapT = setTimeout(() => showCtl(stage.classList.contains("hidectl")), edge ? 330 : 0);
+});
+$("#lock-btn").onclick = () => { st.locked = true; stage.classList.add("locked"); osd("Locked – tap the screen, then the lock to unlock", 2400); };
+$("#unlock").onclick = () => { st.locked = false; stage.classList.remove("locked"); $("#unlock").classList.remove("on"); showCtl(true); osd("Unlocked"); };
+$("#rep-btn").onclick = () => {
+  st.repeat = (st.repeat + 1) % 3; media.loop = st.repeat === 2;
+  const b = $("#rep-btn"); b.classList.toggle("on", st.repeat > 0);
+  b.innerHTML = `<i class="ph ${st.repeat === 2 ? "ph-repeat-once" : "ph-repeat"}"></i>`;
+  osd(["Repeat off", "Repeat all", "Repeat one"][st.repeat]);
+};
+function setSleep(min) {
+  clearTimeout(sleepT); sleepEnd = min === "end";
+  $("#sleep-btn").classList.toggle("on", !!min);
+  if (min && min !== "end") sleepT = setTimeout(() => { media.pause(); setSleep(0); osd("Sleep timer: good night"); }, min * 60000);
+}
+$("#sleep-btn").onclick = e => {
+  e.stopPropagation(); const p = $("#eq-pop");
+  if (p.classList.contains("on")) { p.classList.remove("on"); return; }
+  p.innerHTML = `<h4>Sleep timer</h4><div class="sleep-list">${[[0, "Off"], [15, "15 minutes"], [30, "30 minutes"], [45, "45 minutes"], [60, "1 hour"], [90, "1.5 hours"], ["end", "End of this song"]].map(([v, l]) => `<button data-sleep="${v}">${l}</button>`).join("")}</div>`;
+  p.querySelectorAll("[data-sleep]").forEach(b => b.onclick = () => {
+    const v = b.dataset.sleep === "end" ? "end" : +b.dataset.sleep; setSleep(v); p.classList.remove("on");
+    osd(v ? `Sleep timer: ${b.textContent}` : "Sleep timer off");
+  });
+  placePop(p, $("#sleep-btn"));
+};
+$("#p-eq").onclick = e => { e.stopPropagation(); toggleEq($("#p-eq")); };
+$("#rot-btn").onclick = () => {
+  if (window.EMBED && parent !== window) { parent.postMessage({ velour: "rotate" }, "*"); return; }
+  const done = () => screen.orientation?.lock?.(screen.orientation.type.startsWith("portrait") ? "landscape" : "portrait").catch(() => osd("Turn your phone to rotate"));
+  if (!document.fullscreenElement && stage.requestFullscreen) stage.requestFullscreen().then(done, () => osd("Turn your phone to rotate")); else done() || osd("Turn your phone to rotate");
+};
+matchMedia("(max-width: 760px)").addEventListener("change", () => { applyDevice(); showStage($("#stage").classList.contains("on")); render(); drawAll(); });
+addEventListener("resize", () => drawAll());
 
 render(); drawAll(); renderQueue();
 setTimeout(() => osd("Welcome to the Velour demo – pick a song, a channel or a station", 3200), 400);
