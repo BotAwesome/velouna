@@ -14,6 +14,8 @@ mod epg;
 mod flags;
 mod hotkeys;
 mod i18n;
+#[cfg(not(target_os = "android"))]
+mod instance;
 mod iptv;
 mod library;
 mod logo;
@@ -199,17 +201,30 @@ fn set_cert_bundle() {
     match bundles.iter().find(|p| std::path::Path::new(p).is_file()) {
         // SAFETY: runs first thing in run_desktop, before any thread starts.
         Some(p) => unsafe { std::env::set_var("SSL_CERT_FILE", p) },
-        None => log::warn!("no CA certificate bundle found; https streams may fail (install ca-certificates)"),
+        None => eprintln!("no CA certificate bundle found; https streams may fail (install ca-certificates)"),
     }
 }
 
 pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
-    #[cfg(not(target_os = "android"))]
-    desktop_log::init();
+    // First, while no other thread runs (set_var).
     #[cfg(target_os = "linux")]
     {
         set_cert_bundle();
         update::linux::init();
+    }
+    // Another Velour is running: it takes the files, this one quits. The
+    // phone simulator is a development tool and always opens its own window.
+    #[cfg(not(target_os = "android"))]
+    let note = match if phone { instance::Start::Run(None) } else { instance::hand_over_or_listen(&files) } {
+        instance::Start::HandedOver => return Ok(()),
+        instance::Start::Run(note) => note,
+    };
+    #[cfg(not(target_os = "android"))]
+    {
+        desktop_log::init();
+        if let Some(n) = note {
+            log::warn!("{n}");
+        }
     }
     mobile::set_simulator(phone);
     let size = if phone { [390.0, 800.0] } else { [1280.0, 760.0] };

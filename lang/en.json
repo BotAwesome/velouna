@@ -909,5 +909,11 @@
   "Musik läuft": "Music is playing",
   "Die Installation wurde abgebrochen.": "The installation was cancelled.",
   "Die Installation ist fehlgeschlagen. Installiere das Paket von Hand mit:": "The installation failed. Install the package by hand with:",
-  "Zum Installieren des Pakets fragt Linux gleich nach deinem Passwort. Danach startet Velour von selbst neu.": "To install the package, Linux will ask for your password. Velour then restarts by itself."
+  "Zum Installieren des Pakets fragt Linux gleich nach deinem Passwort. Danach startet Velour von selbst neu.": "To install the package, Linux will ask for your password. Velour then restarts by itself.",
+  "Nur ein Velour-Fenster": "Only one Velour window",
+  "Öffnest du eine Datei, während Velour schon läuft, übernimmt das laufende Fenster sie. Aus: jede Datei öffnet ein neues Fenster.": "Opening a file while Velour is running hands it to the running window. Off: every file opens a new window.",
+  "Dateien im laufenden Fenster": "Files in the running window",
+  "Mehrere auf einmal geöffnete Dateien kommen zusammen an.": "Several files opened at once arrive together.",
+  "Sofort abspielen": "Play now",
+  "Einreihen": "Add to queue"
 }

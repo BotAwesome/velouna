@@ -31,6 +31,17 @@ pub enum MissingMedia {
     Keep,
 }
 
+/// What the running Velour does with files handed over by a second start
+/// (single-window mode).
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum HandOver {
+    /// Play them now (replaces the queue).
+    #[default]
+    Play,
+    /// Add them to the queue (plays them if nothing is playing).
+    Enqueue,
+}
+
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum ResumeMode {
     #[default]
@@ -308,6 +319,10 @@ pub struct Settings {
     pub show_remaining_time: bool,
     pub osd_show_keys: bool,
     pub always_on_top: bool,
+    /// Desktop: a second start hands its files to the running Velour
+    /// instead of opening another window.
+    pub single_instance: bool,
+    pub single_instance_files: HandOver,
     pub library_add_folder_to_queue: bool,
     // Privacy
     pub remember_history: bool,
@@ -438,6 +453,8 @@ impl Default for Settings {
             show_remaining_time: false,
             osd_show_keys: true,
             always_on_top: false,
+            single_instance: true,
+            single_instance_files: HandOver::Play,
             library_add_folder_to_queue: true,
             remember_history: true,
             remember_positions: true,

@@ -654,6 +654,26 @@ impl App {
         }
     }
 
+    /// Files handed over by a second start, as the setting says.
+    #[cfg(not(target_os = "android"))]
+    fn open_handed(&mut self, paths: Vec<String>) {
+        log::info!("single instance: {} file(s) handed over", paths.len());
+        if self.data.settings.single_instance_files == crate::config::HandOver::Enqueue && self.has_media() {
+            let mut files = Vec::new();
+            for p in paths {
+                let pp = std::path::Path::new(&p);
+                if pp.is_dir() {
+                    files.extend(media::list_dir(pp, false).1.into_iter().map(|x| x.to_string_lossy().to_string()));
+                } else if media::is_media(&p) || media::is_url(&p) {
+                    files.push(p);
+                }
+            }
+            self.enqueue(&files);
+        } else {
+            self.open_paths(paths);
+        }
+    }
+
     pub fn enqueue(&mut self, list: &[String]) {
         let list = &self.drop_missing(list);
         if list.is_empty() {
@@ -1749,8 +1769,24 @@ impl App {
         // Files from the command line wait for mpv's render context (made at
         // the end of the first frame): opened before it, a video plays
         // without a picture.
+        // Files from later starts (single-window mode): come to the front.
+        #[cfg(not(target_os = "android"))]
+        if let Some(files) = crate::instance::take(ctx) {
+            ctx.send_viewport_cmd(egui::ViewportCommand::Minimized(false));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
+            if !self.launch_files.is_empty() {
+                // Started together with them (several files opened at once):
+                // one list.
+                self.launch_files.extend(files);
+            } else if !files.is_empty() {
+                self.open_handed(files);
+            }
+        }
         let video_ready = self.video.as_ref().is_none_or(|v| v.ready());
-        if !self.launch_files.is_empty() && self.player.is_some() && video_ready {
+        // A moment's wait gathers files that other processes, started in
+        // the same instant, hand over.
+        let gathered = cfg!(target_os = "android") || ctx.input(|i| i.time) > 0.4;
+        if !self.launch_files.is_empty() && self.player.is_some() && video_ready && gathered {
             let files = std::mem::take(&mut self.launch_files);
             self.open_paths(files);
         }

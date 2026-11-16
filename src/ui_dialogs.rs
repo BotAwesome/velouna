@@ -2,7 +2,7 @@
 //! add subtitles, playlists, presets, about, errors.
 
 use crate::app::{App, CONVERT_PROFILES, Dialog, SettingsPage, SubScope};
-use crate::config::{Language, MissingMedia, 
+use crate::config::{HandOver, Language, MissingMedia, 
     self, ControlItem, ControlLayout, FullscreenControls, Playlist, RepeatMode, ResumeMode, Settings, Stream, SubAuto, ThemeMode,
     WheelAction,
 };
@@ -464,6 +464,11 @@ impl App {
             // Plex metadata (genres, summaries) comes back in the new language.
             self.plex.clear_cache();
         }
+        // Turned on: this window takes the files of later starts from now on.
+        #[cfg(not(target_os = "android"))]
+        if s.single_instance && !old.single_instance {
+            crate::instance::listen();
+        }
         if s.always_on_top != old.always_on_top {
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(if s.always_on_top { egui::WindowLevel::AlwaysOnTop } else { egui::WindowLevel::Normal }));
         }
@@ -657,6 +662,16 @@ impl App {
                 r.row(ui, t!("Immer im Vordergrund"), "", |ui| {
                     widgets::toggle(ui, &t, &mut s.always_on_top);
                 });
+                if !crate::platform::MOBILE {
+                    r.row(ui, t!("Nur ein Velour-Fenster"), t!("Öffnest du eine Datei, während Velour schon läuft, übernimmt das laufende Fenster sie. Aus: jede Datei öffnet ein neues Fenster."), |ui| {
+                        widgets::toggle(ui, &t, &mut s.single_instance);
+                    });
+                    if s.single_instance {
+                        r.row(ui, t!("Dateien im laufenden Fenster"), t!("Mehrere auf einmal geöffnete Dateien kommen zusammen an."), |ui| {
+                            widgets::segmented(ui, &t, &mut s.single_instance_files, &[(HandOver::Play, t!("Sofort abspielen")), (HandOver::Enqueue, t!("Einreihen"))]);
+                        });
+                    }
+                }
                 r.row(ui, t!("Bildschirmmeldungen zeigen Tastenkürzel"), t!("Zeigt z. B. [Strg]+[B] zusammen mit der ausgelösten Aktion."), |ui| {
                     widgets::toggle(ui, &t, &mut s.osd_show_keys);
                 });
