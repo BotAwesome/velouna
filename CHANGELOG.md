@@ -3,6 +3,27 @@
 All notable changes to Velour. The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.1.4] - 2026-11-17
+
+### Linux
+- Velour now runs on Linux: Pop!_OS, Ubuntu, Debian, Linux Mint and other distributions with
+  glibc 2.35 or newer, on Wayland and X11. The .deb installs with apt, the .tar.gz installs for
+  your user without root
+- Everything is included: mpv, FFmpeg, ffprobe and yt-dlp
+- File dialogs of your desktop, the Plex sign-in in the keyring, "Show in file manager" and
+  "Open with" from the file manager
+- Updates work like on Windows: Velour downloads the new package and asks for your password to
+  install it
+
+### Windows and Linux
+- Only one Velour window: a file opened while Velour is running goes to the running window,
+  and several files opened at once arrive as one list. "Settings → Interface → Window" turns
+  this off or adds the files to the queue instead
+- The screen stays on while a video plays, and the computer does not go to sleep during music
+
+### Plex
+- Your Plex server lists Velour with the right system (it said "Windows" on Android, too)
+
 ## [0.1.3] - 2026-11-13
 
 ### Android

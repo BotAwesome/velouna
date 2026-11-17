@@ -4,7 +4,7 @@
 
 # Velour
 
-**A calm, fast media player for Windows and Android, built on mpv.**
+**A calm, fast media player for Windows, Linux and Android, built on mpv.**
 
 Your videos and music, your Plex server, thousands of free TV and radio stations –
 in one player with thin bars and a thick seek bar.
@@ -12,6 +12,7 @@ in one player with thin bars and a thick seek bar.
 [![Latest release](https://img.shields.io/github/v/release/BotAwesome/velour?color=D83F5C&label=release)](https://github.com/BotAwesome/velour/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-1A1220)](LICENSE)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-2b2b2b)
+![Linux](https://img.shields.io/badge/Linux-.deb%20%7C%20.tar.gz-2b2b2b)
 ![Android 8+](https://img.shields.io/badge/Android-8%2B-2b2b2b)
 
 [**Download**](https://github.com/BotAwesome/velour/releases/latest) ·
@@ -111,6 +112,7 @@ Get the files from the [latest release](https://github.com/BotAwesome/velour/rel
 | | |
 |---|---|
 | **Windows 10/11 (64-bit)** | Run `Velour-Setup-<version>.exe`. It installs for your user only (no admin rights) and brings FFmpeg along. Uninstall from *Settings → Apps*. |
+| **Linux (x86_64)** – Pop!_OS, Ubuntu 22.04+, Debian 12, Mint … | `sudo apt install ./velour_<version>_amd64.deb` installs to `/opt/velour`. Other distributions (glibc 2.35+): unpack `velour-<version>-linux-x86_64.tar.gz` and run `./install.sh` (no root). Both bring mpv, FFmpeg and yt-dlp along. |
 | **Android 8 or newer (arm64)** | Open `Velour-<version>-arm64.apk` on the phone and allow installing apps from that source when Android asks. |
 
 Velour looks for a new release once a day (you can turn that off in *Settings → General*)
@@ -135,6 +137,21 @@ You need a current stable [Rust](https://rustup.rs) (edition 2024).
 3. Installer: `pwsh installer\build.ps1` builds `dist\Velour-Setup-<version>.exe`
    (needs `ffmpeg.exe` and `ffprobe.exe` on `PATH` or `-FFmpegDir`).
 
+### Linux
+
+Built on Windows as a cross-compile with [cargo-zigbuild](https://github.com/rust-cross/cargo-zigbuild)
+(zig from `pip install ziglang`, its folder on `PATH`):
+
+```bash
+cargo zigbuild --release -p velour --target x86_64-unknown-linux-gnu.2.31
+python tools/linux/package.py
+```
+
+The packages bring their own mpv, FFmpeg and yt-dlp from `dist/linux-runtime`, which
+`tools/linux/build-libs.sh` builds in an Ubuntu 22.04 container
+(`docker run --rm -v "$PWD/out:/out" -v "$PWD/build-libs.sh:/build-libs.sh:ro" ubuntu:22.04 bash /build-libs.sh`).
+`package.py` writes `dist/velour_<version>_amd64.deb` and `dist/velour-<version>-linux-x86_64.tar.gz`.
+
 ### Android
 
 Needs the Android SDK and NDK and [cargo-ndk](https://github.com/bbqsrc/cargo-ndk):
@@ -150,7 +167,7 @@ The APK ends up in `android\app\build\outputs\apk\release\`.
 ### Releasing
 
 Raise the version in `Cargo.toml`, add a section for it at the top of `CHANGELOG.md`, commit,
-then run `pwsh tools\release.ps1 -Publish`. It builds the installer and the APK and publishes
+then run `pwsh tools\release.ps1 -Publish`. It builds the installer, the APK and the Linux packages and publishes
 a GitHub release with the changelog section as its text. Installed copies of Velour pick it
 up from there.
 
@@ -158,11 +175,12 @@ up from there.
 
 | Path | What |
 |---|---|
-| `src/` | The app (egui), shared by Windows and Android |
+| `src/` | The app (egui), shared by Windows, Linux and Android |
 | `src/plex/` | Plex sign-in, browsing and playback |
 | `src/iptv.rs`, `src/epg.rs`, `src/radio.rs` | Public TV, program guide and radio directory |
 | `setup/` | The installer and uninstaller |
 | `android/` | Android project (NativeActivity) and build script |
+| `tools/linux/` | Linux packages (.deb, .tar.gz) and the build of their mpv/FFmpeg runtime |
 | `lang/en.json` | English texts (German is the source language) |
 | `i18n-macros/` | Compile-time check that every text has a translation |
 | `docs/` | The website (GitHub Pages) and screenshots |
@@ -180,5 +198,6 @@ Velour is not affiliated with or endorsed by Plex Inc.
 ## License
 
 Velour is free software under the [GNU General Public License v3.0 or later](LICENSE).
-The Windows installer and the Android app include mpv and FFmpeg, which come with their
-own licenses (listed in the installer's `licenses` folder).
+The Windows installer, the Linux packages and the Android app include mpv and FFmpeg,
+which come with their own licenses (listed in the installer's `licenses` folder and in
+`/usr/share/doc/velour/copyright` of the Linux package).

@@ -133,7 +133,7 @@ update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 echo "Velour is removed."
 """
 
-README = f"""Velour {VERSION} for Linux (beta)
+README = f"""Velour {VERSION} for Linux
 
 Everything is included: mpv (libmpv), FFmpeg, ffprobe and yt-dlp.
 Needs glibc 2.35+ (Pop!_OS / Ubuntu 22.04 and newer, Debian 12, Fedora 36+).
