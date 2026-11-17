@@ -1489,9 +1489,12 @@ impl App {
                 ui.add_space(4.0);
             }
             if mini {
-                ui.set_max_height(ui.available_height() - 4.0);
+                // (Not set_max_height: that puts the cursor back to the top,
+                // over the header.)
+                ui.scope_builder(egui::UiBuilder::new().max_rect(below_cursor(ui, 4.0)), |ui| self.plex_page(ui, p, touch));
+            } else {
+                self.plex_page(ui, p, touch);
             }
-            self.plex_page(ui, p, touch);
         } else {
             if !touch {
                 self.header_nav(ui, false);
@@ -1504,9 +1507,10 @@ impl App {
                 self.storage_card(ui);
             }
             if mini {
-                ui.set_max_height(ui.available_height() - 4.0);
+                ui.scope_builder(egui::UiBuilder::new().max_rect(below_cursor(ui, 4.0)), |ui| self.entries_view(ui, &entries, touch, &mut click));
+            } else {
+                self.entries_view(ui, &entries, touch, &mut click);
             }
-            self.entries_view(ui, &entries, touch, &mut click);
             if let Some(c) = click {
                 self.handle_click(c, &entries, touch);
             }
@@ -1873,4 +1877,11 @@ fn collection_chip(ui: &mut Ui, t: &theme::Theme, icon: &str, label: &str) -> eg
     ui.painter().text(pos2(r.left() + 18.0, r.center().y), Align2::CENTER_CENTER, icon, theme::icon(16.0), t.accent);
     widgets::painter_text_trunc(ui.painter(), pos2(r.left() + 34.0, r.center().y - 9.0), label, FontId::proportional(13.0), t.text, w - 40.0);
     resp.on_hover_cursor(CursorIcon::PointingHand)
+}
+
+/// The space left below the cursor, `gap` short of the bottom.
+fn below_cursor(ui: &Ui, gap: f32) -> Rect {
+    let mut r = ui.available_rect_before_wrap();
+    r.max.y = (r.max.y - gap).max(r.min.y);
+    r
 }

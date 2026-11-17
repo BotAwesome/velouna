@@ -3,6 +3,12 @@
 All notable changes to Velour. The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.2.1] - 2026-11-17
+
+### Library
+- With the mini player showing, the tiles of a folder no longer slide up over the path and
+  the toolbar. The pages of Plex, Jellyfin and Emby had the same fault
+
 ## [0.2.0] - 2026-11-17
 
 ### Jellyfin and Emby
