@@ -186,6 +186,23 @@ impl Http {
         self.prep(r, Some(token)).call().map(|_| ()).map_err(err_text)
     }
 
+    /// Jellyfin/Emby request: JSON in and out, MediaBrowser `Authorization`
+    /// header, none of the Plex headers. `quick` uses the short timeouts.
+    pub fn mb(&self, method: &str, url: &str, auth: &str, body: Option<&Value>, quick: bool) -> Result<Value, String> {
+        let agent = if quick { &self.quick } else { &self.agent };
+        let r = agent.request(method, url).set("Accept", "application/json").set("Authorization", auth);
+        let r = match body {
+            Some(b) => r.set("Content-Type", "application/json").send_string(&b.to_string()),
+            None if method == "POST" => r.send_string(""),
+            None => r.call(),
+        };
+        Self::json(r)
+    }
+
+    pub fn device_name(&self) -> &str {
+        &self.device_name
+    }
+
     pub fn bytes(&self, url: &str) -> Result<Vec<u8>, String> {
         let resp = self.prep(self.agent.get(url), None).set("Accept", "image/jpeg,image/png,image/webp,*/*").call().map_err(err_text)?;
         let mut buf = Vec::new();

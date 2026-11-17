@@ -3,11 +3,12 @@
 
 pub mod api;
 pub mod images;
+pub mod mb;
 pub mod model;
 
-pub use model::{Hub, Item, Kind, Section, Server, User};
+pub use model::{Backend, Hub, Item, Kind, Section, Server, User};
 
-use crate::config::PlexConfig;
+use crate::config::{MediaServerConfig, PlexConfig};
 use api::Http;
 use eframe::egui;
 use std::collections::{HashMap, HashSet};
@@ -28,9 +29,36 @@ pub struct Remote {
     pub rating_key: String,
     pub title: String,
     pub duration: f64,
+    pub conn: Conn,
+    pub kind: Kind,
+}
+
+/// How to reach one server: everything a worker needs for a request.
+#[derive(Clone, Debug, Default)]
+pub struct Conn {
     pub base: String,
     pub token: String,
-    pub kind: Kind,
+    pub backend: Backend,
+    /// Jellyfin/Emby only.
+    pub user_id: String,
+    pub device_id: String,
+}
+
+impl Conn {
+    /// `name=token` for URLs that cannot carry headers (ffmpeg, subtitles).
+    pub fn token_query(&self) -> String {
+        let p = if self.backend.media_browser() { mb::token_param(self.backend) } else { "X-Plex-Token" };
+        format!("{p}={}", api::url_encode(&self.token))
+    }
+    /// `path` (server-relative paths get the base) with the token appended.
+    pub fn with_token(&self, path: &str) -> String {
+        let url = if path.starts_with("http") { path.to_string() } else { format!("{}{path}", self.base) };
+        format!("{url}{}{}", if url.contains('?') { '&' } else { '?' }, self.token_query())
+    }
+    /// Header lines for mpv's `http-header-fields`.
+    pub fn stream_headers(&self) -> String {
+        if self.backend.media_browser() { mb::stream_headers(&self.token) } else { format!("X-Plex-Token: {}", self.token) }
+    }
 }
 
 static REMOTES: LazyLock<Mutex<HashMap<String, Remote>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -50,7 +78,7 @@ pub fn remote_title(url: &str) -> Option<String> {
 /// URL usable by ffmpeg (which cannot take mpv's per-file header option).
 pub fn authorized(url: &str) -> String {
     match remote(url) {
-        Some(r) => format!("{url}{}X-Plex-Token={}", if url.contains('?') { '&' } else { '?' }, api::url_encode(&r.token)),
+        Some(r) => r.conn.with_token(url),
         None => url.to_string(),
     }
 }
@@ -75,6 +103,28 @@ fn store_token(t: &str) -> bool {
 }
 fn delete_token() {
     secret::delete(KEYRING_SERVICE, KEYRING_USER);
+}
+
+/// Credential-store key for a Jellyfin/Emby token.
+fn mb_key(id: &str) -> String {
+    format!("mediaserver-{id}")
+}
+
+/// A saved Jellyfin/Emby server, with its token from the credential store.
+fn media_server(m: &MediaServerConfig) -> Option<Server> {
+    let token = secret::get(KEYRING_SERVICE, &mb_key(&m.id))?;
+    Some(Server {
+        id: m.id.clone(),
+        name: m.name.clone(),
+        token,
+        owned: true,
+        owner: m.user_name.clone(),
+        presence: true,
+        connections: vec![model::Connection { uri: m.base.clone(), ..Default::default() }],
+        backend: m.backend,
+        user_id: m.user_id.clone(),
+        device_id: m.device_id.clone(),
+    })
 }
 
 fn random_id() -> String {
@@ -109,6 +159,22 @@ pub struct ActiveServer {
     pub base: String,
     pub token: String,
     pub owned: bool,
+    pub backend: Backend,
+    pub user_id: String,
+    pub device_id: String,
+}
+
+impl ActiveServer {
+    pub fn conn(&self) -> Conn {
+        Conn { base: self.base.clone(), token: self.token.clone(), backend: self.backend, user_id: self.user_id.clone(), device_id: self.device_id.clone() }
+    }
+}
+
+/// Sign-in form state for a Jellyfin or Emby server.
+#[derive(Clone, Debug, Default)]
+pub struct MbLogin {
+    pub busy: bool,
+    pub error: Option<String>,
 }
 
 /// Loading state handed to the UI.
@@ -142,9 +208,10 @@ enum Job {
     CheckPin(i64),
     Account { token: String },
     Connect { server: Server, last: Option<String>, local_only: bool },
-    Fetch { key: String, base: String, token: String, path: String, kind: FetchKind },
-    Page { list: String, page: usize, base: String, token: String, path: String },
-    Send { base: String, token: String, method: &'static str, path: String },
+    Fetch { key: String, conn: Conn, path: String, kind: FetchKind, sections: Arc<Vec<Section>> },
+    Page { list: String, page: usize, conn: Conn, path: String },
+    Send { conn: Conn, method: &'static str, path: String },
+    MbLogin { url: String, user: String, password: String, device_id: String },
 }
 
 enum Res {
@@ -154,6 +221,7 @@ enum Res {
     Connected(String, Result<(String, Vec<Section>), String>),
     Fetched(String, Loaded),
     Page(String, usize, Result<(Vec<Item>, i64), String>),
+    MbLogin(Result<(Server, String), String>),
 }
 
 #[derive(Default)]
@@ -185,6 +253,7 @@ pub enum PlayMode {
 
 struct Session {
     url: String,
+    conn: Conn,
     rating_key: String,
     duration_ms: i64,
     last_sent: Instant,
@@ -203,7 +272,12 @@ pub struct Plex {
     pub images: images::Images,
     pub pending_play: Option<PlayReq>,
     pub token_store_failed: bool,
+    pub mb_login: MbLogin,
+    /// The Jellyfin/Emby server shown refused its token (signed out on the server).
+    pub mb_expired: bool,
     token: Option<String>,
+    /// Server being connected to or shown (Plex account results don't override it).
+    target: Option<String>,
     jobs: Sender<Job>,
     results: Receiver<Res>,
     cache: HashMap<String, Loaded>,
@@ -257,7 +331,10 @@ impl Plex {
             images,
             pending_play: None,
             token_store_failed: false,
+            mb_login: MbLogin::default(),
+            mb_expired: false,
             token: None,
+            target: None,
             jobs: jtx,
             results: rrx,
             cache: HashMap::new(),
@@ -274,11 +351,63 @@ impl Plex {
             p.user = Some(User { name: cfg.user_name.clone(), thumb: String::new() });
             let _ = p.jobs.send(Job::Account { token: t });
         }
+        p.servers = cfg.media_servers.iter().filter_map(media_server).collect();
+        // A Jellyfin/Emby server was last used (or is all there is): connect right away.
+        let mb_pick = cfg.server_id.clone().filter(|id| p.servers.iter().any(|s| &s.id == id)).or_else(|| p.token.is_none().then(|| p.servers.first().map(|s| s.id.clone())).flatten());
+        if let Some(id) = mb_pick {
+            p.select_server(&id, false);
+        }
         (p, dirty)
     }
 
-    pub fn signed_in(&self) -> bool {
+    pub fn plex_signed_in(&self) -> bool {
         self.token.is_some()
+    }
+    /// Id of the server shown (or being connected to).
+    pub fn active_id(&self) -> Option<String> {
+        self.server.as_ref().map(|s| s.id.clone()).or_else(|| self.target.clone())
+    }
+    /// Kind of the server shown (or being connected to).
+    pub fn backend(&self) -> Backend {
+        if let Some(s) = &self.server {
+            return s.backend;
+        }
+        self.target.as_ref().and_then(|id| self.servers.iter().find(|s| &s.id == id)).map(|s| s.backend).unwrap_or_default()
+    }
+
+    // ------------------------------------------------- Jellyfin / Emby
+
+    /// Signs in to a Jellyfin or Emby server (result arrives in `poll`).
+    pub fn add_media_server(&mut self, url: &str, user: &str, password: &str) {
+        self.mb_login = MbLogin { busy: true, error: None };
+        let device_id = format!("velour-{}", random_id());
+        let _ = self.jobs.send(Job::MbLogin { url: url.trim().to_string(), user: user.trim().to_string(), password: password.to_string(), device_id });
+    }
+
+    /// Signs out of a Jellyfin/Emby server and forgets it.
+    pub fn remove_media_server(&mut self, id: &str, cfg: &mut PlexConfig) {
+        if let Some(s) = self.servers.iter().find(|s| s.id == id && s.backend.media_browser()).cloned() {
+            let conn = Conn { base: s.connections.first().map(|c| c.uri.clone()).unwrap_or_default(), token: s.token.clone(), backend: s.backend, user_id: s.user_id.clone(), device_id: s.device_id.clone() };
+            let http = self.http.clone();
+            std::thread::spawn(move || mb::logout(&http, &conn));
+            secret::delete(KEYRING_SERVICE, &mb_key(id));
+        }
+        self.servers.retain(|s| s.id != id);
+        cfg.media_servers.retain(|m| m.id != id);
+        if self.target.as_deref() == Some(id) || self.server.as_ref().is_some_and(|s| s.id == id) {
+            self.server = None;
+            self.target = None;
+            self.sections.clear();
+            self.clear_cache();
+            cfg.server_id = None;
+            self.status = Status::SignedOut;
+            if let Some(t) = self.token.clone() {
+                self.status = Status::Connecting(t!("Anmelden…").into());
+                let _ = self.jobs.send(Job::Account { token: t });
+            } else if let Some(next) = self.servers.first().map(|s| s.id.clone()) {
+                self.select_server(&next, false);
+            }
+        }
     }
     pub fn ready(&self) -> bool {
         self.status == Status::Ready && self.server.is_some()
@@ -287,6 +416,13 @@ impl Plex {
     // ------------------------------------------------------------ login
 
     pub fn start_login(&mut self) {
+        // Signing in to Plex leaves a Jellyfin/Emby server that is shown.
+        if self.backend().media_browser() {
+            self.server = None;
+            self.target = None;
+            self.sections.clear();
+            self.clear_cache();
+        }
         self.status = Status::Connecting(t!("Code wird angefordert…").into());
         let _ = self.jobs.send(Job::CreatePin);
     }
@@ -294,14 +430,23 @@ impl Plex {
     pub fn cancel_login(&mut self) {
         self.status = Status::SignedOut;
         self.pin_check_at = None;
+        // Back to a Jellyfin/Emby server, if there is one.
+        if let Some(id) = self.servers.iter().find(|s| s.backend.media_browser()).map(|s| s.id.clone()) {
+            self.select_server(&id, false);
+        }
     }
 
     pub fn sign_out(&mut self, cfg: &mut PlexConfig) {
         delete_token();
         self.token = None;
         self.user = None;
-        self.servers.clear();
+        self.servers.retain(|s| s.backend.media_browser());
+        cfg.user_name.clear();
+        if self.backend().media_browser() {
+            return; // a Jellyfin/Emby server is shown: it stays
+        }
         self.server = None;
+        self.target = None;
         self.sections.clear();
         self.clear_cache();
         self.images.clear();
@@ -309,12 +454,16 @@ impl Plex {
         cfg.server_id = None;
         cfg.server_name.clear();
         cfg.last_uri = None;
-        cfg.user_name.clear();
+        if let Some(id) = self.servers.first().map(|s| s.id.clone()) {
+            self.select_server(&id, false);
+        }
     }
 
     pub fn select_server(&mut self, id: &str, local_only: bool) {
         let Some(s) = self.servers.iter().find(|s| s.id == id).cloned() else { return };
         self.status = Status::Connecting(tf!("Verbinde mit {}…", s.name));
+        self.mb_expired = false;
+        self.target = Some(s.id.clone());
         self.server = None;
         self.sections.clear();
         self.clear_cache();
@@ -322,11 +471,19 @@ impl Plex {
     }
 
     pub fn retry(&mut self, cfg: &PlexConfig, local_only: bool) {
-        if let Some(t) = self.token.clone() {
-            if self.servers.is_empty() {
+        if let Some(id) = self.target.clone().filter(|id| self.servers.iter().any(|s| &s.id == id && s.backend.media_browser())) {
+            self.select_server(&id, local_only);
+        } else if let Some(t) = self.token.clone() {
+            let plex = |s: &&Server| s.backend == Backend::Plex;
+            if !self.servers.iter().any(|s| s.backend == Backend::Plex) {
                 self.status = Status::Connecting(t!("Anmelden…").into());
                 let _ = self.jobs.send(Job::Account { token: t });
-            } else if let Some(id) = cfg.server_id.clone().or_else(|| self.servers.first().map(|s| s.id.clone())) {
+            } else if let Some(id) = cfg
+                .server_id
+                .clone()
+                .filter(|id| self.servers.iter().filter(plex).any(|s| &s.id == id))
+                .or_else(|| self.servers.iter().find(plex).map(|s| s.id.clone()))
+            {
                 self.select_server(&id, local_only);
             }
         }
@@ -371,15 +528,25 @@ impl Plex {
                         dirty = true;
                     }
                     self.user = Some(user);
-                    self.servers = servers;
+                    // Plex servers first, then the Jellyfin/Emby ones.
+                    let others: Vec<Server> = self.servers.drain(..).filter(|s| s.backend.media_browser()).collect();
+                    self.servers = servers.clone();
+                    self.servers.extend(others);
+                    // Already on a Jellyfin/Emby server: the account only fills the list.
+                    if self.target.as_ref().is_some_and(|id| self.servers.iter().any(|s| &s.id == id && s.backend.media_browser())) {
+                        continue;
+                    }
                     let pick = cfg
                         .server_id
                         .as_ref()
-                        .and_then(|id| self.servers.iter().find(|s| &s.id == id))
-                        .or_else(|| self.servers.iter().find(|s| s.owned && s.presence))
-                        .or_else(|| self.servers.iter().find(|s| s.presence))
-                        .or_else(|| self.servers.first())
+                        .and_then(|id| servers.iter().find(|s| &s.id == id))
+                        .or_else(|| servers.iter().find(|s| s.owned && s.presence))
+                        .or_else(|| servers.iter().find(|s| s.presence))
+                        .or_else(|| servers.first())
                         .cloned();
+                    if let Some(s) = &pick {
+                        self.target = Some(s.id.clone());
+                    }
                     match pick {
                         Some(s) => {
                             let last = if cfg.server_id.as_deref() == Some(&s.id) { cfg.last_uri.clone() } else { None };
@@ -390,7 +557,13 @@ impl Plex {
                     }
                 }
                 Res::Account(Err(e)) => {
-                    if api::is_unauthorized(&e) {
+                    if self.backend().media_browser() {
+                        // Plex is down or signed out, but a Jellyfin/Emby server is shown.
+                        if api::is_unauthorized(&e) {
+                            delete_token();
+                            self.token = None;
+                        }
+                    } else if api::is_unauthorized(&e) {
                         delete_token();
                         self.token = None;
                         self.status = Status::Error(t!("Die Plex-Anmeldung ist abgelaufen. Bitte erneut verbinden.").into());
@@ -400,18 +573,47 @@ impl Plex {
                 }
                 Res::Connected(id, Ok((base, sections))) => {
                     let Some(s) = self.servers.iter().find(|s| s.id == id).cloned() else { continue };
+                    if self.target.as_ref() != Some(&id) {
+                        continue; // the user picked another server meanwhile
+                    }
                     if cfg.server_id.as_deref() != Some(&s.id) || cfg.last_uri.as_deref() != Some(&base) || cfg.server_name != s.name {
                         cfg.server_id = Some(s.id.clone());
                         cfg.server_name = s.name.clone();
                         cfg.last_uri = Some(base.clone());
                         dirty = true;
                     }
-                    self.server = Some(ActiveServer { id: s.id, name: s.name, base, token: s.token, owned: s.owned });
+                    self.server = Some(ActiveServer { id: s.id, name: s.name, base, token: s.token, owned: s.owned, backend: s.backend, user_id: s.user_id, device_id: s.device_id });
                     self.sections = sections;
                     self.status = Status::Ready;
                     self.generation += 1;
                 }
-                Res::Connected(_, Err(e)) => self.status = Status::Error(e),
+                Res::Connected(id, Err(e)) => {
+                    if self.target.as_ref() == Some(&id) {
+                        let mb = self.servers.iter().any(|s| s.id == id && s.backend.media_browser());
+                        self.mb_expired = mb && api::is_unauthorized(&e);
+                        self.status = Status::Error(if self.mb_expired { t!("Die Anmeldung gilt nicht mehr, zum Beispiel weil das Gerät auf dem Server entfernt wurde. Bitte melde dich neu an.").into() } else { e });
+                    }
+                }
+                Res::MbLogin(Ok((server, user_name))) => {
+                    self.mb_login = MbLogin::default();
+                    self.token_store_failed = !secret::set(KEYRING_SERVICE, &mb_key(&server.id), &server.token);
+                    cfg.media_servers.retain(|m| m.id != server.id);
+                    cfg.media_servers.push(MediaServerConfig {
+                        id: server.id.clone(),
+                        name: server.name.clone(),
+                        base: server.connections.first().map(|c| c.uri.clone()).unwrap_or_default(),
+                        backend: server.backend,
+                        user_id: server.user_id.clone(),
+                        device_id: server.device_id.clone(),
+                        user_name,
+                    });
+                    dirty = true;
+                    let id = server.id.clone();
+                    self.servers.retain(|s| s.id != id);
+                    self.servers.push(server);
+                    self.select_server(&id, local_only);
+                }
+                Res::MbLogin(Err(e)) => self.mb_login = MbLogin { busy: false, error: Some(e) },
                 Res::Fetched(key, l) => {
                     self.pending.remove(&key);
                     self.cache.insert(key, l);
@@ -474,7 +676,8 @@ impl Plex {
         if !self.pending.contains(&key) {
             if let Some(s) = &self.server {
                 self.pending.insert(key.clone());
-                let _ = self.jobs.send(Job::Fetch { key, base: s.base.clone(), token: s.token.clone(), path: path.to_string(), kind });
+                let sections = Arc::new(self.sections.clone());
+                let _ = self.jobs.send(Job::Fetch { key, conn: s.conn(), path: path.to_string(), kind, sections });
             }
         }
         None
@@ -545,7 +748,7 @@ impl Plex {
             }
         }
         l.pending.insert(page);
-        let _ = self.jobs.send(Job::Page { list: path.to_string(), page, base: s.base.clone(), token: s.token.clone(), path: path.to_string() });
+        let _ = self.jobs.send(Job::Page { list: path.to_string(), page, conn: s.conn(), path: path.to_string() });
     }
     pub fn retry_list(&mut self, path: &str) {
         self.lists.remove(path);
@@ -593,6 +796,9 @@ impl Plex {
     /// Transcoded artwork URL for a Plex image path (or an absolute URL).
     pub fn image_url(&self, path: &str, w: u32, h: u32) -> Option<String> {
         let s = self.server.as_ref()?;
+        if s.backend.media_browser() {
+            return Some(mb::image_url(&s.base, s.backend, path, w, h));
+        }
         Some(format!(
             "{}/photo/:/transcode?width={w}&height={h}&minSize=1&upscale=1&url={}&X-Plex-Token={}",
             s.base,
@@ -620,14 +826,18 @@ impl Plex {
         let s = self.server.as_ref()?;
         Some(format!("{}{}", s.base, part_key))
     }
-    pub fn token_for_playback(&self) -> Option<String> {
-        self.server.as_ref().map(|s| s.token.clone())
+    /// Connection of the server shown, for registering streams.
+    pub fn conn(&self) -> Option<Conn> {
+        self.server.as_ref().map(|s| s.conn())
     }
 
     fn send(&self, method: &'static str, path: String) {
         if let Some(s) = &self.server {
-            let _ = self.jobs.send(Job::Send { base: s.base.clone(), token: s.token.clone(), method, path });
+            self.send_to(&s.conn(), method, path);
         }
+    }
+    fn send_to(&self, conn: &Conn, method: &'static str, path: String) {
+        let _ = self.jobs.send(Job::Send { conn: conn.clone(), method, path });
     }
 
     pub fn set_watched(&mut self, item: &Item, watched: bool) {
@@ -655,7 +865,7 @@ impl Plex {
             if remote.is_none() || s.url != path {
                 let s = self.session.take().unwrap();
                 if sync {
-                    self.timeline(&s.rating_key, "stopped", s.last_time_ms, s.duration_ms);
+                    self.timeline(&s.conn, &s.rating_key, "stopped", s.last_time_ms, s.duration_ms);
                 }
                 self.finish_progress(&s.rating_key, s.last_time_ms, s.duration_ms);
             }
@@ -666,6 +876,7 @@ impl Plex {
         let state = if paused { "paused" } else { "playing" };
         let s = self.session.get_or_insert_with(|| Session {
             url: path.to_string(),
+            conn: r.conn.clone(),
             rating_key: r.rating_key.clone(),
             duration_ms: dur_ms,
             last_sent: Instant::now() - Duration::from_secs(60),
@@ -686,10 +897,10 @@ impl Plex {
         }
         let rk = r.rating_key.clone();
         if sync && due {
-            self.timeline(&rk, state, time_ms, dur_ms);
+            self.timeline(&r.conn, &rk, state, time_ms, dur_ms);
         }
         if sync && scrobble {
-            self.send("GET", format!("/:/scrobble?identifier=com.plexapp.plugins.library&key={rk}"));
+            self.send_to(&r.conn, "GET", format!("/:/scrobble?identifier=com.plexapp.plugins.library&key={rk}"));
             // Keep menus honest ("Als ungesehen markieren") without refetching mid-playback.
             self.patch(&rk, |i| i.view_count = i.view_count.max(1));
         }
@@ -700,16 +911,16 @@ impl Plex {
 
     /// Stops the current session (app exit). Blocking with a short timeout.
     pub fn stop_now(&mut self, sync: bool) {
-        if let (Some(s), Some(srv)) = (self.session.take(), &self.server) {
+        if let Some(s) = self.session.take() {
             if sync {
                 let path = timeline_path(&s.rating_key, "stopped", s.last_time_ms, s.duration_ms);
-                let _ = self.http.send(&srv.base, &srv.token, "GET", &path);
+                let _ = send_now(&self.http, &s.conn, "GET", &path);
             }
         }
     }
 
-    fn timeline(&self, rk: &str, state: &str, time_ms: i64, dur_ms: i64) {
-        self.send("GET", timeline_path(rk, state, time_ms, dur_ms));
+    fn timeline(&self, conn: &Conn, rk: &str, state: &str, time_ms: i64, dur_ms: i64) {
+        self.send_to(conn, "GET", timeline_path(rk, state, time_ms, dur_ms));
     }
 
     fn finish_progress(&mut self, rk: &str, time_ms: i64, dur_ms: i64) {
@@ -740,11 +951,26 @@ fn with_paging(path: &str, start: usize, size: usize) -> String {
     format!("{path}{}X-Plex-Container-Start={start}&X-Plex-Container-Size={size}", if path.contains('?') { '&' } else { '?' })
 }
 
+/// A write (timeline, scrobble …), answered by the right kind of server. Blocking.
+fn send_now(http: &Http, conn: &Conn, method: &str, path: &str) -> Result<(), String> {
+    if conn.backend.media_browser() { mb::send(http, conn, path) } else { http.send(&conn.base, &conn.token, method, path) }
+}
+
 fn run_job(http: &Http, job: Job) -> Option<Res> {
     Some(match job {
         Job::CreatePin => Res::Pin(http.create_pin()),
         Job::CheckPin(id) => Res::PinToken(id, http.check_pin(id)),
         Job::Account { token } => Res::Account(http.user(&token).and_then(|u| http.resources(&token).map(|s| (u, s)))),
+        Job::Connect { server, .. } if server.backend.media_browser() => {
+            let conn = Conn {
+                base: server.connections.first().map(|c| c.uri.clone()).unwrap_or_default(),
+                token: server.token.clone(),
+                backend: server.backend,
+                user_id: server.user_id.clone(),
+                device_id: server.device_id.clone(),
+            };
+            Res::Connected(server.id.clone(), mb::connect(http, &conn).map(|sections| (conn.base.clone(), sections)))
+        }
         Job::Connect { server, last, local_only } => {
             let id = server.id.clone();
             let r = http.pick_connection(&server, last.as_deref(), local_only).and_then(|base| {
@@ -753,7 +979,21 @@ fn run_job(http: &Http, job: Job) -> Option<Res> {
             });
             Res::Connected(id, r)
         }
-        Job::Fetch { key, base, token, path, kind } => {
+        Job::Fetch { key, conn, path, kind, sections } if conn.backend.media_browser() => {
+            let l = match kind {
+                FetchKind::Items => mb::items(http, &conn, &path).map(|(i, n)| Loaded::Items(Arc::new(i), n)),
+                FetchKind::Hubs => mb::hubs(http, &conn, &path, &sections).map(|h| Loaded::Hubs(Arc::new(h))),
+                FetchKind::Meta => {
+                    let id = path.trim_start_matches("/library/metadata/").split('?').next().unwrap_or("").to_string();
+                    mb::meta(http, &conn, &id).map(|i| Loaded::Meta(Arc::new(i)))
+                }
+                FetchKind::Chars => Ok(Loaded::Chars(Arc::new(vec![]))),
+                FetchKind::Values => mb::values(http, &conn, &path).map(|v| Loaded::Values(Arc::new(v))),
+            };
+            Res::Fetched(key, l.unwrap_or_else(Loaded::Err))
+        }
+        Job::Fetch { key, conn, path, kind, .. } => {
+            let (base, token) = (conn.base, conn.token);
             let l = match http.get(&base, &token, &path) {
                 Ok(v) => match kind {
                     FetchKind::Items => {
@@ -772,13 +1012,19 @@ fn run_job(http: &Http, job: Job) -> Option<Res> {
             };
             Res::Fetched(key, l)
         }
-        Job::Page { list, page, base, token, path } => {
-            let r = http.get(&base, &token, &with_paging(&path, page * PAGE, PAGE)).map(|v| model::parse_items(&v));
+        Job::Page { list, page, conn, path } => {
+            let paged = with_paging(&path, page * PAGE, PAGE);
+            let r = if conn.backend.media_browser() {
+                mb::items(http, &conn, &paged)
+            } else {
+                http.get(&conn.base, &conn.token, &paged).map(|v| model::parse_items(&v))
+            };
             Res::Page(list, page, r)
         }
-        Job::Send { base, token, method, path } => {
-            let _ = http.send(&base, &token, method, &path);
+        Job::Send { conn, method, path } => {
+            let _ = send_now(http, &conn, method, &path);
             return None;
         }
+        Job::MbLogin { url, user, password, device_id } => Res::MbLogin(mb::login(http, &url, &user, &password, &device_id)),
     })
 }

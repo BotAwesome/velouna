@@ -252,13 +252,18 @@ impl App {
         let t = self.t;
         let mm = m();
         let cur = self.tab();
-        let tabs = [
-            (Tab::Home, ph::HOUSE, "Start"),
-            (Tab::Plex, ph::TELEVISION_SIMPLE, "Plex"),
-            (Tab::Videos, ph::FILM_STRIP, "Videos"),
-            (Tab::Music, ph::MUSIC_NOTES, t!("Musik")),
-            (Tab::More, ph::DOTS_THREE_OUTLINE, t!("Mehr")),
-        ];
+        let shown = |id: &str| self.data.settings.nav_shown(id);
+        let tabs: Vec<(Tab, &str, &str)> = [
+            (Tab::Home, ph::HOUSE, "Start", true),
+            (Tab::Plex, ph::TELEVISION_SIMPLE, self.plex.backend().name(), shown("servers")),
+            (Tab::Videos, ph::FILM_STRIP, "Videos", shown("videos")),
+            (Tab::Music, ph::MUSIC_NOTES, t!("Musik"), shown("music")),
+            (Tab::More, ph::DOTS_THREE_OUTLINE, t!("Mehr"), true),
+        ]
+        .into_iter()
+        .filter(|x| x.3)
+        .map(|(a, b, c, _)| (a, b, c))
+        .collect();
         let n = tabs.len() as f32;
         for (i, (tab, icon, label)) in tabs.into_iter().enumerate() {
             let cell = if horizontal {

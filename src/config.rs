@@ -259,7 +259,7 @@ pub struct ControlLayout {
 impl Default for ControlLayout {
     fn default() -> Self {
         use ControlItem::*;
-        Self { left: vec![Prev, Play, Next, Time], right: vec![Duration, Volume, Audio, Subtitles, Adjustments, Queue] }
+        Self { left: vec![Prev, Play, Next, Time], right: vec![Duration, Volume, Audio, Subtitles, Loop, Adjustments, Queue] }
     }
 }
 
@@ -322,6 +322,10 @@ pub struct Settings {
     /// Desktop: a second start hands its files to the running Velour
     /// instead of opening another window.
     pub single_instance: bool,
+    /// Sidebar entries the user turned off (`nav::ITEMS` ids).
+    pub nav_hidden: Vec<String>,
+    /// Collapsed server groups in the sidebar (`plex`, `jellyfin`, `emby`).
+    pub nav_collapsed: Vec<String>,
     pub single_instance_files: HandOver,
     pub library_add_folder_to_queue: bool,
     // Privacy
@@ -395,6 +399,8 @@ pub struct Settings {
     // misc
     pub layout: ControlLayout,
     pub sidebar_width: f32,
+    /// Width of the library next to the player.
+    pub compact_lib_width: f32,
 }
 
 /// A folder in Android's shared storage (Movies, Music, Download, …).
@@ -412,6 +418,42 @@ fn default_video_folders(videos: &std::path::Path) -> Vec<PathBuf> {
     #[cfg(not(target_os = "android"))]
     {
         vec![videos.to_path_buf()]
+    }
+}
+
+/// Sidebar entries that can be switched off: (id, label, icon).
+pub const NAV_ITEMS: [(&str, &str, &str); 9] = [
+    ("videos", "Videos", egui_phosphor::regular::FILM_STRIP),
+    ("music", "Musik", egui_phosphor::regular::MUSIC_NOTES),
+    ("tv", "TV-Sender", egui_phosphor::regular::TELEVISION),
+    ("radio", "Radiosender", egui_phosphor::regular::RADIO),
+    ("network", "Netzwerk", egui_phosphor::regular::BROADCAST),
+    ("playlists", "Playlists", egui_phosphor::regular::PLAYLIST),
+    ("recent", "Zuletzt gespielt", egui_phosphor::regular::CLOCK_COUNTER_CLOCKWISE),
+    ("servers", "Plex, Jellyfin, Emby", egui_phosphor::regular::HARD_DRIVES),
+    ("pins", "Angeheftet", egui_phosphor::regular::PUSH_PIN),
+];
+
+impl Settings {
+    /// Whether a sidebar entry (an id from [`NAV_ITEMS`]) is shown.
+    pub fn nav_shown(&self, id: &str) -> bool {
+        !self.nav_hidden.iter().any(|h| h == id)
+    }
+    pub fn set_nav_shown(&mut self, id: &str, on: bool) {
+        self.nav_hidden.retain(|h| h != id);
+        if !on {
+            self.nav_hidden.push(id.to_string());
+        }
+    }
+    pub fn nav_open(&self, group: &str) -> bool {
+        !self.nav_collapsed.iter().any(|h| h == group)
+    }
+    pub fn toggle_nav_group(&mut self, group: &str) {
+        let open = self.nav_open(group);
+        self.nav_collapsed.retain(|h| h != group);
+        if open {
+            self.nav_collapsed.push(group.to_string());
+        }
     }
 }
 
@@ -454,6 +496,8 @@ impl Default for Settings {
             osd_show_keys: true,
             always_on_top: false,
             single_instance: true,
+            nav_hidden: Vec::new(),
+            nav_collapsed: Vec::new(),
             single_instance_files: HandOver::Play,
             library_add_folder_to_queue: true,
             remember_history: true,
@@ -514,6 +558,7 @@ impl Default for Settings {
             record_dir: videos.join("Velour"),
             layout: ControlLayout::default(),
             sidebar_width: 340.0,
+            compact_lib_width: 340.0,
         }
     }
 }
@@ -705,6 +750,23 @@ pub struct PlexConfig {
     pub server_name: String,
     pub last_uri: Option<String>,
     pub user_name: String,
+    /// Jellyfin and Emby servers signed in to (tokens live in the credential store).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub media_servers: Vec<MediaServerConfig>,
+}
+
+/// A Jellyfin or Emby server Velour is signed in to.
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+#[serde(default)]
+pub struct MediaServerConfig {
+    /// `<server id>/<user id>`: one entry per user and server.
+    pub id: String,
+    pub name: String,
+    pub base: String,
+    pub backend: crate::plex::model::Backend,
+    pub user_id: String,
+    pub user_name: String,
+    pub device_id: String,
 }
 
 /// Folder name the app used while it was still called "VLB".
@@ -759,6 +821,15 @@ impl Data {
         }
         // Default folders from before the rename still carry the working title.
         let s = &mut d.settings;
+        // The default player bar before 0.2.0 had no repeat button: a bar
+        // that was never changed gets the new default.
+        {
+            use ControlItem::*;
+            let old: [&[ControlItem]; 2] = [&[Duration, Volume, Audio, Subtitles, Adjustments, Queue], &[Duration, Volume, Audio, Subtitles, Adjustments, Loop, Queue]];
+            if s.layout.left == [Prev, Play, Next, Time] && old.contains(&s.layout.right.as_slice()) {
+                s.layout = ControlLayout::default();
+            }
+        }
         if s.screenshot_dir.file_name().is_some_and(|n| n == LEGACY_DIR) {
             s.screenshot_dir = s.screenshot_dir.with_file_name("Velour");
         }

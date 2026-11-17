@@ -6,7 +6,7 @@
 use crate::app::{App, ResumePrompt, View};
 use crate::config::ResumeMode;
 use crate::library::{LibLoc, PlexLoc, PlexTab};
-use crate::plex::{self, Hub, Item, Kind, PlayMode, PlayReq, St, Status};
+use crate::plex::{self, Backend, Hub, Item, Kind, PlayMode, PlayReq, Server, St, Status};
 use crate::theme::{self, Theme};
 use crate::widgets::{self, icon_button};
 use eframe::egui::{
@@ -99,6 +99,18 @@ pub struct PlexUi {
     search_typed: Option<Instant>,
     /// Query the search field last mirrored from the page location.
     search_synced: Option<String>,
+    /// Jellyfin/Emby sign-in form, while open.
+    pub mb_form: Option<MbForm>,
+    /// Show the Plex sign-in page although another server is connected.
+    pub plex_connect: bool,
+}
+
+#[derive(Clone, Default)]
+pub struct MbForm {
+    pub url: String,
+    pub user: String,
+    pub password: String,
+    sent: bool,
 }
 
 /// Side column width for the side layout, or None when the page is too narrow
@@ -419,7 +431,7 @@ impl App {
                         self.px.subs_done.insert(path.clone());
                         if let (Some(part), Some(p)) = (item.first_part(), &self.player) {
                             for s in part.streams.iter().filter(|s| s.stream_type == 3 && !s.external_key.is_empty()) {
-                                let url = format!("{}{}?X-Plex-Token={}", r.base, s.external_key, plex::api::url_encode(&r.token));
+                                let url = r.conn.with_token(&s.external_key);
                                 let title = if s.display.is_empty() { s.title.clone() } else { s.display.clone() };
                                 let _ = p.mpv.command(&["sub-add", &url, "auto", &title, &s.language]);
                             }
@@ -458,7 +470,7 @@ impl App {
         };
         self.plex.pending_play = Some(PlayReq { list, start_key, start_at, shuffle, mode });
         if mode == PlayMode::Play {
-            self.osd(t!("Plex wird geladen…"));
+            self.osd(tf!("{} wird geladen…", self.plex.backend().name()));
         }
     }
 
@@ -468,7 +480,7 @@ impl App {
             St::Ready(v) => v,
             St::Loading => return false,
             St::Failed(e) => {
-                self.osd(format!("Plex: {e}"));
+                self.osd(format!("{}: {e}", self.plex.backend().name()));
                 return true;
             }
         };
@@ -490,17 +502,17 @@ impl App {
                 .unwrap_or(0);
         }
         let list: Vec<Item> = list.into_iter().skip(start).take(120).collect();
-        let Some(token) = self.plex.token_for_playback() else { return true };
-        let base = self.plex.server.as_ref().map(|s| s.base.clone()).unwrap_or_default();
+        let Some(conn) = self.plex.conn() else { return true };
+        let headers = conn.stream_headers();
         let mut entries: Vec<(String, String)> = Vec::new();
         for (n, it) in list.iter().enumerate() {
             let Some(part) = it.first_part() else { continue };
             let Some(url) = self.plex.stream_url(&part.key) else { continue };
             plex::register(
                 &url,
-                plex::Remote { rating_key: it.rating_key.clone(), title: it.play_title(), duration: it.duration(), base: base.clone(), token: token.clone(), kind: it.kind },
+                plex::Remote { rating_key: it.rating_key.clone(), title: it.play_title(), duration: it.duration(), conn: conn.clone(), kind: it.kind },
             );
-            let mut opts = format!("force-media-title={},http-header-fields={}", q(&it.play_title()), q(&format!("X-Plex-Token: {token}")));
+            let mut opts = format!("force-media-title={},http-header-fields={}", q(&it.play_title()), q(&headers));
             if n == 0 && req.mode == PlayMode::Play {
                 let offset = it.view_offset();
                 let resumable = offset > 30.0 && it.progress().map(|p| p < 0.95).unwrap_or(false);
@@ -910,7 +922,11 @@ impl App {
 
     /// Entry point from the library: draws the Plex page for `loc`.
     pub fn plex_page(&mut self, ui: &mut Ui, loc: PlexLoc, compact: bool) {
-        if !self.plex.ready() {
+        if self.px.mb_form.is_some() {
+            self.mb_form_page(ui);
+            return;
+        }
+        if !self.plex.ready() || self.px.plex_connect {
             self.plex_connect_page(ui);
             return;
         }
@@ -943,7 +959,15 @@ impl App {
 
     fn plex_connect_page(&mut self, ui: &mut Ui) {
         let t = self.t;
-        let status = self.plex.status.clone();
+        let mut status = self.plex.status.clone();
+        if self.px.plex_connect {
+            if self.plex.plex_signed_in() || matches!(status, Status::Pin { .. }) {
+                self.px.plex_connect = false;
+            } else {
+                status = Status::SignedOut;
+            }
+        }
+        let name = self.plex.backend().name();
         egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
             ui.add_space((ui.available_height() * 0.12).clamp(20.0, 90.0));
             ui.vertical_centered(|ui| {
@@ -960,8 +984,17 @@ impl App {
                         ui.add_space(4.0);
                         ui.label(RichText::new(t!("Die Anmeldung läuft über plex.tv in deinem Browser. Velour sieht dein Passwort nie.")).size(12.5).color(t.text_faint));
                         ui.add_space(18.0);
-                        if widgets::accent_button(ui, &t, t!("Mit Plex anmelden")).clicked() {
-                            self.plex.start_login();
+                        ui.horizontal(|ui| {
+                            if widgets::accent_button(ui, &t, t!("Mit Plex anmelden")).clicked() {
+                                self.px.plex_connect = false;
+                                self.plex.start_login();
+                            }
+                            if widgets::ghost_button(ui, &t, t!("Jellyfin oder Emby verbinden")).clicked() {
+                                self.px.mb_form = Some(MbForm::default());
+                            }
+                        });
+                        if self.px.plex_connect && widgets::ghost_button(ui, &t, t!("Abbrechen")).clicked() {
+                            self.px.plex_connect = false;
                         }
                     }
                     Status::Pin { url, .. } => {
@@ -989,12 +1022,31 @@ impl App {
                         ui.add(egui::Spinner::new().size(24.0).color(t.accent));
                     }
                     Status::Error(e) => {
-                        ui.label(RichText::new(t!("Plex ist nicht erreichbar")).font(theme::semibold(20.0)).color(t.text));
+                        ui.label(RichText::new(tf!("{} ist nicht erreichbar", name)).font(theme::semibold(20.0)).color(t.text));
                         ui.add_space(6.0);
                         ui.label(RichText::new(e).color(t.text_dim));
                         ui.add_space(16.0);
                         ui.horizontal(|ui| {
-                            if self.plex.signed_in() {
+                            if self.plex.backend().media_browser() {
+                                if self.plex.mb_expired {
+                                    if widgets::accent_button(ui, &t, t!("Neu anmelden")).clicked() {
+                                        // Same address and user; the new sign-in replaces the old entry.
+                                        let id = self.plex.active_id().unwrap_or_default();
+                                        if let Some(m) = self.data.plex.media_servers.iter().find(|m| m.id == id) {
+                                            self.px.mb_form = Some(MbForm { url: m.base.clone(), user: m.user_name.clone(), ..Default::default() });
+                                        }
+                                    }
+                                } else if widgets::accent_button(ui, &t, t!("Erneut versuchen")).clicked() {
+                                    let cfg = self.data.plex.clone();
+                                    self.plex.retry(&cfg, self.data.settings.plex_local_only);
+                                }
+                                if widgets::ghost_button(ui, &t, t!("Server entfernen")).clicked() {
+                                    if let Some(id) = self.plex.active_id() {
+                                        self.plex.remove_media_server(&id, &mut self.data.plex);
+                                        self.mark_dirty();
+                                    }
+                                }
+                            } else if self.plex.plex_signed_in() {
                                 if widgets::accent_button(ui, &t, t!("Erneut versuchen")).clicked() {
                                     let cfg = self.data.plex.clone();
                                     self.plex.retry(&cfg, self.data.settings.plex_local_only);
@@ -1011,7 +1063,7 @@ impl App {
                             ui.add_space(18.0);
                             ui.label(RichText::new(t!("Anderen Server wählen")).size(12.0).color(t.text_faint));
                             for s in self.plex.servers.clone() {
-                                let label = format!("{}{}", s.name, if s.owned { String::new() } else { tf!(" · geteilt von {}", s.owner) });
+                                let label = format!("{}{}", s.name, if s.backend.media_browser() { format!(" · {}", s.backend.name()) } else if s.owned { String::new() } else { tf!(" · geteilt von {}", s.owner) });
                                 if widgets::menu_item(ui, &t, ph::HARD_DRIVES, &label, if s.presence { "online" } else { "offline" }, false).clicked() {
                                     self.plex.select_server(&s.id, self.data.settings.plex_local_only);
                                 }
@@ -1027,6 +1079,85 @@ impl App {
                 }
             });
         });
+    }
+
+    /// Sign-in form for a Jellyfin or Emby server.
+    fn mb_form_page(&mut self, ui: &mut Ui) {
+        let t = self.t;
+        let Some(mut f) = self.px.mb_form.clone() else { return };
+        let login = self.plex.mb_login.clone();
+        if f.sent && !login.busy {
+            if login.error.is_none() {
+                // Signed in: the new server is being connected.
+                self.px.mb_form = None;
+                self.px.plex_connect = false;
+                self.lib.go(LibLoc::Plex(PlexLoc::Home));
+                return;
+            }
+            f.sent = false;
+        }
+        let mut submit = false;
+        let mut cancel = false;
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
+            ui.add_space((ui.available_height() * 0.08).clamp(16.0, 70.0));
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(420.0);
+                let (r, _) = ui.allocate_exact_size(vec2(64.0, 64.0), Sense::hover());
+                ui.painter().rect_filled(r, CornerRadius::same(16), t.accent_soft);
+                ui.painter().text(r.center(), Align2::CENTER_CENTER, ph::HARD_DRIVES, theme::icon(32.0), t.accent);
+                ui.add_space(14.0);
+                ui.label(RichText::new(t!("Jellyfin oder Emby verbinden")).font(theme::semibold(22.0)).color(t.text));
+                ui.add_space(6.0);
+                ui.label(RichText::new(t!("Velour erkennt selbst, ob es ein Jellyfin- oder Emby-Server ist. Gespeichert wird nur ein Zugangsschlüssel, nicht dein Passwort.")).color(t.text_dim));
+                ui.add_space(18.0);
+            });
+            ui.vertical_centered(|ui| {
+                ui.set_max_width(360.0);
+                let field = |ui: &mut Ui, label: &str, text: &mut String, hint: &str, password: bool, id: &str| {
+                    ui.label(RichText::new(label).size(12.5).color(t.text_dim));
+                    let r = ui.add(egui::TextEdit::singleline(text).id(Id::new(("mb-form", id))).password(password).hint_text(RichText::new(hint).color(t.text_faint)).desired_width(f32::INFINITY).margin(vec2(10.0, 8.0)));
+                    ui.add_space(10.0);
+                    r
+                };
+                ui.with_layout(Layout::top_down(Align::Min), |ui| {
+                    let u = field(ui, t!("Serveradresse"), &mut f.url, "jellyfin.example.com  ·  192.168.1.5:8096", false, "url");
+                    let nothing_focused = !ui.memory(|m| m.focused().is_some());
+                    if !f.sent && f.url.is_empty() && nothing_focused {
+                        u.request_focus();
+                    }
+                    field(ui, t!("Benutzername"), &mut f.user, "", false, "user");
+                    let pw = field(ui, t!("Passwort"), &mut f.password, "", true, "password");
+                    if !f.sent && !f.url.is_empty() && !f.user.is_empty() && f.password.is_empty() && nothing_focused {
+                        pw.request_focus();
+                    }
+                    if pw.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        submit = true;
+                    }
+                    if let Some(e) = &login.error {
+                        ui.label(RichText::new(e).color(t.danger));
+                        ui.add_space(8.0);
+                    }
+                    ui.horizontal(|ui| {
+                        if f.sent {
+                            ui.add(egui::Spinner::new().size(18.0).color(t.accent));
+                            ui.label(RichText::new(t!("Verbinde…")).color(t.text_dim));
+                        } else if widgets::accent_button(ui, &t, t!("Verbinden")).clicked() {
+                            submit = true;
+                        }
+                        if widgets::ghost_button(ui, &t, t!("Abbrechen")).clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+            });
+        });
+        if submit && !f.sent && !f.url.trim().is_empty() && !f.user.trim().is_empty() {
+            self.plex.add_media_server(&f.url, &f.user, &f.password);
+            // The password is only needed for this one request.
+            f.password.clear();
+            f.sent = true;
+        }
+        self.px.mb_form = if cancel { None } else { Some(f) };
     }
 
     fn plex_home(&mut self, ui: &mut Ui, acts: &mut Vec<Act>, compact: bool) {
@@ -2297,55 +2428,118 @@ impl App {
         self.plex_handle(acts, None);
     }
 
-    /// Navigation entries for the full library sidebar.
+    /// Navigation entries for the full library sidebar: one collapsible group
+    /// per kind of server (Plex, Jellyfin, Emby), each with its servers and
+    /// the libraries of the one shown.
     pub fn plex_nav(&mut self, ui: &mut Ui, nav_item: fn(&mut Ui, &Theme, &str, &str, bool) -> egui::Response) {
         let t = self.t;
-        ui.add_space(14.0);
-        ui.horizontal(|ui| {
-            ui.label(RichText::new("PLEX").size(11.0).color(t.text_faint));
-            let (dot, tip) = match &self.plex.status {
-                Status::Ready => (t.accent, t!("Verbunden").to_string()),
-                Status::Connecting(m) => (t.text_faint, m.clone()),
-                Status::Error(e) => (t.danger, e.clone()),
-                _ => (Color32::TRANSPARENT, String::new()),
-            };
-            if dot != Color32::TRANSPARENT {
-                let (r, resp) = ui.allocate_exact_size(vec2(8.0, 8.0), Sense::hover());
-                ui.painter().circle_filled(r.center(), 3.5, dot);
-                resp.on_hover_text(tip);
-            }
-        });
-        ui.add_space(2.0);
         let cur = match &self.lib.loc {
             LibLoc::Plex(p) => Some(p.clone()),
             _ => None,
         };
-        if !self.plex.signed_in() && !matches!(self.plex.status, Status::Pin { .. }) {
-            if nav_item(ui, &t, ph::PLUGS_CONNECTED, t!("Mit Plex verbinden"), matches!(cur, Some(PlexLoc::Home))).clicked() {
-                self.lib.go(LibLoc::Plex(PlexLoc::Home));
-            }
-            return;
-        }
-        let server = if self.data.plex.server_name.is_empty() { t!("Übersicht").to_string() } else { self.data.plex.server_name.clone() };
         let home_sel = matches!(cur, Some(PlexLoc::Home) | Some(PlexLoc::Search(_)) | Some(PlexLoc::Hub { .. }));
-        if nav_item(ui, &t, ph::HARD_DRIVES, &server, home_sel).clicked() {
-            self.lib.go(LibLoc::Plex(PlexLoc::Home));
-        }
         let cur_section = match &cur {
             Some(PlexLoc::Section { key, .. }) => Some(key.clone()),
             Some(PlexLoc::Item { section: Some((k, _)), .. }) => Some(k.clone()),
             _ => None,
         };
-        for s in self.plex.sections.clone() {
-            let sel = cur_section.as_deref() == Some(s.key.as_str());
-            if nav_item(ui, &t, s.icon(), &s.title, sel).clicked() {
-                let tab = match &self.lib.loc {
-                    LibLoc::Plex(PlexLoc::Section { key, tab, .. }) if *key == s.key => *tab,
-                    _ => PlexTab::Recommended,
-                };
-                self.lib.go(LibLoc::Plex(PlexLoc::Section { key: s.key.clone(), title: s.title.clone(), tab }));
+        let active = self.plex.active_id();
+        let active_backend = self.plex.backend();
+        let servers = self.plex.servers.clone();
+        let mut groups = vec![Backend::Plex];
+        for b in [Backend::Jellyfin, Backend::Emby] {
+            if servers.iter().any(|s| s.backend == b) {
+                groups.push(b);
             }
         }
+        for b in groups {
+            let key = b.name().to_lowercase();
+            let open = self.data.settings.nav_open(&key);
+            ui.add_space(12.0);
+            let dot = (b == active_backend && (active.is_some() || b == Backend::Plex)).then(|| match &self.plex.status {
+                Status::Ready => Some((t.accent, t!("Verbunden").to_string())),
+                Status::Connecting(m) => Some((t.text_faint, m.clone())),
+                Status::Error(e) => Some((t.danger, e.clone())),
+                _ => None,
+            });
+            if nav_group_header(ui, &t, &b.name().to_uppercase(), open, dot.flatten()).clicked() {
+                self.data.settings.toggle_nav_group(&key);
+                self.mark_dirty();
+            }
+            if !open {
+                continue;
+            }
+            ui.add_space(2.0);
+            if b == Backend::Plex && !self.plex.plex_signed_in() {
+                if !matches!(self.plex.status, Status::Pin { .. }) || active_backend != Backend::Plex {
+                    let sel = self.px.mb_form.is_none() && (self.px.plex_connect || (home_sel && !self.plex.ready() && active_backend == Backend::Plex));
+                    if nav_item(ui, &t, ph::PLUGS_CONNECTED, t!("Mit Plex verbinden"), sel).clicked() {
+                        self.px.plex_connect = self.plex.ready();
+                        self.px.mb_form = None;
+                        self.lib.go(LibLoc::Plex(PlexLoc::Home));
+                    }
+                    if !servers.iter().any(|s| s.backend.media_browser()) && nav_item(ui, &t, ph::PLUS, t!("Jellyfin oder Emby"), self.px.mb_form.is_some()).clicked() {
+                        self.px.mb_form = Some(MbForm::default());
+                        self.lib.go(LibLoc::Plex(PlexLoc::Home));
+                    }
+                    continue;
+                }
+            }
+            // Plex: the server shown (others are switched in the settings); Jellyfin/Emby: all.
+            let mut list: Vec<Server> = servers.iter().filter(|s| s.backend == b && (b != Backend::Plex || active.as_ref() == Some(&s.id))).cloned().collect();
+            if b == Backend::Plex && list.is_empty() {
+                // Account still loading: show the remembered server name.
+                let name = if self.data.plex.server_name.is_empty() { t!("Übersicht").to_string() } else { self.data.plex.server_name.clone() };
+                list.push(Server { id: String::new(), name, ..Default::default() });
+            }
+            for srv in list {
+                let is_active = active.as_deref() == Some(srv.id.as_str()) || srv.id.is_empty();
+                if nav_item(ui, &t, ph::HARD_DRIVES, &srv.name, is_active && home_sel && !self.px.plex_connect && self.px.mb_form.is_none()).clicked() {
+                    self.px.plex_connect = false;
+                    self.px.mb_form = None;
+                    if !is_active {
+                        self.plex.select_server(&srv.id, self.data.settings.plex_local_only);
+                    }
+                    self.lib.go(LibLoc::Plex(PlexLoc::Home));
+                }
+                if !is_active || !self.plex.ready() {
+                    continue;
+                }
+                for s in self.plex.sections.clone() {
+                    let sel = cur_section.as_deref() == Some(s.key.as_str());
+                    if nav_item(ui, &t, s.icon(), &s.title, sel).clicked() {
+                        let tab = match &self.lib.loc {
+                            LibLoc::Plex(PlexLoc::Section { key, tab, .. }) if *key == s.key => *tab,
+                            _ => PlexTab::Recommended,
+                        };
+                        self.px.plex_connect = false;
+                        self.px.mb_form = None;
+                        self.lib.go(LibLoc::Plex(PlexLoc::Section { key: s.key.clone(), title: s.title.clone(), tab }));
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Group title in the sidebar ("PLEX ▾"): click to fold the group in or out.
+fn nav_group_header(ui: &mut Ui, t: &Theme, label: &str, open: bool, dot: Option<(Color32, String)>) -> egui::Response {
+    let w = ui.available_width();
+    let (r, resp) = ui.allocate_exact_size(vec2(w, 22.0), Sense::click());
+    let col = if resp.hovered() { t.text_dim } else { t.text_faint };
+    let g = ui.painter().layout_no_wrap(label.to_string(), FontId::proportional(11.0), col);
+    let tx = r.left() + 6.0;
+    ui.painter().galley(pos2(tx, r.center().y - g.size().y / 2.0), g.clone(), col);
+    let mut tip = None;
+    if let Some((c, text)) = dot {
+        ui.painter().circle_filled(pos2(tx + g.size().x + 11.0, r.center().y), 3.5, c);
+        tip = Some(text);
+    }
+    ui.painter().text(pos2(r.right() - 10.0, r.center().y), Align2::CENTER_CENTER, if open { ph::CARET_DOWN } else { ph::CARET_RIGHT }, theme::icon(12.0), col);
+    let resp = resp.on_hover_cursor(CursorIcon::PointingHand);
+    match tip {
+        Some(text) if !text.is_empty() => resp.on_hover_text(text),
+        _ => resp,
     }
 }
 

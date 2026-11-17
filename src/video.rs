@@ -287,8 +287,11 @@ impl Inner {
                 },
                 mpv::RenderParam { ty: mpv::RENDER_PARAM_INVALID, data: std::ptr::null_mut() },
             ];
-            (self.mpv.api.render_update)(self.ctx);
+            let new_frame = (self.mpv.api.render_update)(self.ctx) & 1 != 0;
             (self.mpv.api.render_render)(self.ctx, params.as_mut_ptr());
+            if new_frame {
+                mpv::timing::frame();
+            }
 
             gl.bind_framebuffer(glow::READ_FRAMEBUFFER, Some(fbo));
             gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, None);

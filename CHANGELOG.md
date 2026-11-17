@@ -3,6 +3,37 @@
 All notable changes to Velour. The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.2.0] - 2026-11-17
+
+### Jellyfin and Emby
+- Connect a Jellyfin or Emby server with its address, user name and password, next to Plex or
+  without it: start page with continue watching and next up, libraries, collections,
+  playlists, search, and playback with your progress synced to the server
+- If the server signs Velour out (for example after the device was removed there), Velour
+  asks you to sign in again instead of showing an error
+- The settings page "Plex" is now "Media servers" and lists all your servers
+
+### Blazing fast
+- From double-click to picture in about half a second, even when Velour was not running:
+  a file opened at start now plays right away
+- mpv 0.42 on Windows and Android, with FFmpeg 9 on Android
+- Android: HTTPS streams no longer stall at the start
+
+### Sidebar
+- The first setup asks what the sidebar shows, with presets for your own files, media servers
+  or TV and radio. "Settings → Interface → Sidebar" changes it later
+- The Plex, Jellyfin and Emby groups in the sidebar fold in and out
+
+### Player
+- The repeat button (off, all, one file) is in the player bar by default, next to the
+  settings. Bars you arranged yourself stay as they are
+
+### Library next to the player
+- Keeps the width you drag it to, also after a restart
+- Has its own grid and list view (grid shows small tiles)
+- Dragging files to the queue shows what you are carrying
+- Files without a preview, like songs, get a box of the same size, so all titles line up
+
 ## [0.1.4] - 2026-11-17
 
 ### Linux

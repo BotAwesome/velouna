@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "app.velour"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "app.velour"
@@ -59,5 +59,5 @@ android {
 
 dependencies {
     // libmpv + FFmpeg for Android (MIT, github.com/jarnedemeulemeester/libmpv-android)
-    implementation("dev.jdtech.mpv:libmpv:1.0.0")
+    implementation("dev.jdtech.mpv:libmpv:1.1.0")
 }

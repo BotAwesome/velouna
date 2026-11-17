@@ -10,6 +10,82 @@ use libloading::Library;
 use std::ffi::{CStr, CString, c_char, c_int, c_void};
 use std::path::PathBuf;
 
+/// `loadfile` that plays right away (replace, append-play, …) starts a timing.
+fn note_load(args: &[&str]) {
+    if args.first() == Some(&"loadfile") && !matches!(args.get(2), Some(&"append") | Some(&"insert-next") | Some(&"insert-at")) {
+        timing::requested();
+    }
+}
+
+/// Click-to-picture timing, written to the log for every file that is opened:
+/// from the request (or, for the first file, from the program start) to mpv
+/// having the file, to playback running and to the first picture on screen.
+pub mod timing {
+    use std::sync::{LazyLock, Mutex};
+    use std::time::Instant;
+
+    static START: LazyLock<Instant> = LazyLock::new(Instant::now);
+    struct Load {
+        at: Instant,
+        first: bool,
+        loaded: Option<u128>,
+        playing: Option<u128>,
+    }
+    static LOAD: Mutex<Option<Load>> = Mutex::new(None);
+    /// Only for measuring during development: VELOUR_TIMING=1.
+    static ENABLED: LazyLock<bool> = LazyLock::new(|| std::env::var_os("VELOUR_TIMING").is_some_and(|v| v != "0"));
+    static SEEN_FIRST: Mutex<bool> = Mutex::new(false);
+
+    /// Call as early as possible in `main`.
+    pub fn program_start() {
+        LazyLock::force(&START);
+    }
+    /// A file was handed to mpv to play now.
+    pub(super) fn requested() {
+        if !*ENABLED {
+            return;
+        }
+        let first = !*SEEN_FIRST.lock().unwrap();
+        *LOAD.lock().unwrap() = Some(Load { at: Instant::now(), first, loaded: None, playing: None });
+    }
+    pub fn file_loaded() {
+        if let Some(l) = LOAD.lock().unwrap().as_mut() {
+            l.loaded.get_or_insert(l.at.elapsed().as_millis());
+        }
+    }
+    /// Playback (re)started; for files without video this is the end point.
+    pub fn playing(has_video: bool) {
+        let mut g = LOAD.lock().unwrap();
+        if let Some(l) = g.as_mut() {
+            l.playing.get_or_insert(l.at.elapsed().as_millis());
+        }
+        if !has_video {
+            finish(g.take(), "sound");
+        }
+    }
+    /// A new video frame was drawn.
+    pub fn frame() {
+        let mut g = LOAD.lock().unwrap();
+        // Frames before the new file is open still belong to the old one.
+        if g.as_ref().is_some_and(|l| l.loaded.is_some()) {
+            finish(g.take(), "picture");
+        }
+    }
+    fn finish(l: Option<Load>, what: &str) {
+        let Some(l) = l else { return };
+        *SEEN_FIRST.lock().unwrap() = true;
+        let total = l.at.elapsed().as_millis();
+        let ms = |v: Option<u128>| v.map_or("-".into(), |v| v.to_string());
+        let steps = format!("file open {} ms, playing {} ms", ms(l.loaded), ms(l.playing));
+        if l.first {
+            let epoch = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis());
+            log::info!("timing: program start to {what} {} ms (load to {what} {total} ms; {steps}; at {epoch})", START.elapsed().as_millis());
+        } else {
+            log::info!("timing: load to {what} {total} ms ({steps})");
+        }
+    }
+}
+
 #[repr(C)]
 pub struct mpv_handle {
     _p: [u8; 0],
@@ -516,12 +592,14 @@ impl Mpv {
     }
 
     pub fn command(&self, args: &[&str]) -> Result<(), String> {
+        note_load(args);
         let mut a = argv(args);
         let r = unsafe { (self.api.command)(self.handle, a.ptrs.as_mut_ptr()) };
         self.check(r)
     }
 
     pub fn command_async(&self, userdata: u64, args: &[&str]) -> Result<(), String> {
+        note_load(args);
         let mut a = argv(args);
         let r = unsafe { (self.api.command_async)(self.handle, userdata, a.ptrs.as_mut_ptr()) };
         self.check(r)

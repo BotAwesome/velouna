@@ -70,7 +70,7 @@ const PAGES: &[(SettingsPage, &str, &str, &str)] = &[
     (SettingsPage::Audio, ph::WAVEFORM, "Audio", "Medien"),
     (SettingsPage::Subtitles, ph::SUBTITLES, "Untertitel", "Medien"),
     (SettingsPage::Library, ph::BOOKS, "Bibliothek", "Medien"),
-    (SettingsPage::Plex, ph::TELEVISION_SIMPLE, "Plex", "Medien"),
+    (SettingsPage::Plex, ph::HARD_DRIVES, "Medienserver", "Medien"),
     (SettingsPage::Network, ph::GLOBE, "Netzwerk", "System"),
     (SettingsPage::Performance, ph::CPU, "Leistung", "System"),
     (SettingsPage::Recording, ph::RECORD, "Aufnahme", "System"),
@@ -625,6 +625,16 @@ impl App {
                     self.data.settings = s.clone();
                     self.open_touch_editor(ui.ctx());
                 }
+                r.section(ui, t!("Leiste unten"));
+                for (id, label, _) in crate::config::NAV_ITEMS.iter().filter(|x| matches!(x.0, "servers" | "videos" | "music")) {
+                    r.row(ui, crate::i18n::tr(label), "", |ui| {
+                        let mut on = s.nav_shown(id);
+                        widgets::toggle(ui, &t, &mut on);
+                        if on != s.nav_shown(id) {
+                            s.set_nav_shown(id, on);
+                        }
+                    });
+                }
                 r.section(ui, t!("Erweitert"));
                 r.row(ui, t!("Ausblendverzögerung"), t!("Wie lange die Leisten nach dem Wegbewegen sichtbar bleiben."), |ui| {
                     let mut v = s.hide_delay_ms as f64;
@@ -658,6 +668,16 @@ impl App {
                         self.dialog = Some(Dialog::Customize);
                     }
                 });
+                r.section(ui, t!("Seitenleiste"));
+                for (id, label, _) in crate::config::NAV_ITEMS.iter() {
+                    r.row(ui, crate::i18n::tr(label), "", |ui| {
+                        let mut on = s.nav_shown(id);
+                        widgets::toggle(ui, &t, &mut on);
+                        if on != s.nav_shown(id) {
+                            s.set_nav_shown(id, on);
+                        }
+                    });
+                }
                 r.section(ui, t!("Fenster"));
                 r.row(ui, t!("Immer im Vordergrund"), "", |ui| {
                     widgets::toggle(ui, &t, &mut s.always_on_top);
@@ -956,8 +976,8 @@ impl App {
                 });
             }
             SettingsPage::Plex => {
-                r.section(ui, t!("Konto"));
-                let signed_in = self.plex.signed_in();
+                r.section(ui, t!("Plex-Konto"));
+                let signed_in = self.plex.plex_signed_in();
                 let user = self.plex.user.as_ref().map(|u| u.name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| self.data.plex.user_name.clone());
                 let status = match &self.plex.status {
                     crate::plex::Status::Ready => t!("Verbunden").to_string(),
@@ -966,6 +986,7 @@ impl App {
                     crate::plex::Status::Pin { .. } => t!("Warte auf Bestätigung im Browser…").into(),
                     crate::plex::Status::SignedOut => t!("Nicht angemeldet").into(),
                 };
+                let status = if self.plex.backend().media_browser() && signed_in { t!("Angemeldet").to_string() } else { status };
                 let mut sign_out = false;
                 let mut sign_in = false;
                 r.row(ui, if signed_in && !user.is_empty() { &user } else { t!("Plex-Konto") }, &status, |ui| {
@@ -982,20 +1003,50 @@ impl App {
                     self.mark_dirty();
                 }
                 if sign_in {
+                    self.px.plex_connect = false;
+                    self.px.mb_form = None;
                     self.plex.start_login();
                     self.lib.go(crate::library::LibLoc::Plex(crate::library::PlexLoc::Home));
                     self.view = crate::app::View::Library;
                     self.dialog = None;
                 }
-                if signed_in && !self.plex.servers.is_empty() {
+                r.section(ui, "Jellyfin & Emby");
+                let mut remove = None;
+                for sv in self.plex.servers.iter().filter(|x| x.backend.media_browser()) {
+                    let base = sv.connections.first().map(|c| c.uri.clone()).unwrap_or_default();
+                    let sub = format!("{} · {} · {}", sv.backend.name(), base, self.data.plex.media_servers.iter().find(|m| m.id == sv.id).map(|m| m.user_name.clone()).unwrap_or_default());
+                    r.row(ui, &sv.name, &sub, |ui| {
+                        if ui.button(t!("Entfernen")).clicked() {
+                            remove = Some(sv.id.clone());
+                        }
+                    });
+                }
+                if let Some(id) = remove {
+                    self.plex.remove_media_server(&id, &mut self.data.plex);
+                    self.mark_dirty();
+                }
+                let mut add = false;
+                r.row(ui, t!("Server hinzufügen"), t!("Mit Adresse, Benutzername und Passwort. Velour speichert nur einen Zugangsschlüssel."), |ui| {
+                    if ui.button(t!("Hinzufügen…")).clicked() {
+                        add = true;
+                    }
+                });
+                if add {
+                    self.px.mb_form = Some(crate::ui_plex::MbForm::default());
+                    self.lib.go(crate::library::LibLoc::Plex(crate::library::PlexLoc::Home));
+                    self.view = crate::app::View::Library;
+                    self.dialog = None;
+                }
+                if self.plex.servers.len() > 1 || (signed_in && !self.plex.servers.is_empty()) {
+                    r.section(ui, t!("Anzeige"));
                     let servers = self.plex.servers.clone();
                     let cur = self.plex.server.as_ref().map(|s| s.id.clone()).or(self.data.plex.server_id.clone()).unwrap_or_default();
                     let cur_name = servers.iter().find(|s| s.id == cur).map(|s| s.name.clone()).unwrap_or_else(|| t!("Auswählen").into());
                     let mut pick: Option<String> = None;
-                    r.row(ui, "Server", t!("Der Plex Media Server, dessen Mediatheken Velour zeigt."), |ui| {
+                    r.row(ui, "Server", t!("Der Server, dessen Mediatheken Velour zeigt."), |ui| {
                         egui::ComboBox::from_id_salt("plex-server").selected_text(cur_name).width(220.0).show_ui(ui, |ui| {
                             for sv in &servers {
-                                let label = if sv.owned { sv.name.clone() } else { tf!("{} (geteilt von {})", sv.name, sv.owner) };
+                                let label = if sv.backend.media_browser() { format!("{} ({})", sv.name, sv.backend.name()) } else if sv.owned { sv.name.clone() } else { tf!("{} (geteilt von {})", sv.name, sv.owner) };
                                 if ui.selectable_label(sv.id == cur, label).clicked() && sv.id != cur {
                                     pick = Some(sv.id.clone());
                                 }
@@ -1006,7 +1057,9 @@ impl App {
                         self.plex.select_server(&id, s.plex_local_only);
                     }
                     if let Some(sv) = &self.plex.server {
-                        let kind = if sv.base.contains("plex.direct") && !sv.base.contains("://192-168") && !sv.base.contains("://10-") {
+                        let kind = if sv.backend.media_browser() {
+                            if sv.base.starts_with("https://") { t!("Direkt (verschlüsselt)") } else { t!("Direkt") }
+                        } else if sv.base.contains("plex.direct") && !sv.base.contains("://192-168") && !sv.base.contains("://10-") {
                             t!("Remote (verschlüsselt)")
                         } else if sv.base.starts_with("http://") {
                             t!("Lokales Netzwerk")
@@ -1023,13 +1076,13 @@ impl App {
                     widgets::segmented(ui, &t, &mut s.plex_side_layout, &[(true, t!("Seitenleiste")), (false, t!("Banner oben"))]);
                 });
                 r.section(ui, t!("Verhalten"));
-                r.row(ui, t!("Fortschritt mit Plex synchronisieren"), t!("Wiedergabeposition und „gesehen“ werden an den Server gemeldet – wie bei jeder Plex-App."), |ui| {
+                r.row(ui, t!("Fortschritt mit dem Server synchronisieren"), t!("Wiedergabeposition und „gesehen“ werden an den Server gemeldet – wie bei den offiziellen Apps."), |ui| {
                     widgets::toggle(ui, &t, &mut s.plex_sync_progress);
                 });
-                r.row(ui, t!("„Weiterschauen“ von Plex auf der Startseite"), "", |ui| {
+                r.row(ui, t!("„Weiterschauen“ vom Server auf der Startseite"), "", |ui| {
                     widgets::toggle(ui, &t, &mut s.plex_on_home);
                 });
-                r.row(ui, t!("Nur lokale Verbindungen verwenden"), t!("Verbindet sich nie über das Internet oder das Plex-Relay."), |ui| {
+                r.row(ui, t!("Plex: nur lokale Verbindungen"), t!("Verbindet sich nie über das Internet oder das Plex-Relay."), |ui| {
                     widgets::toggle(ui, &t, &mut s.plex_local_only);
                 });
                 r.row(ui, t!("Zwischenspeicher leeren"), t!("Lädt Mediatheken und Bilder neu vom Server."), |ui| {
@@ -1971,6 +2024,61 @@ impl App {
                 });
                 next = Some(2);
             }
+            2 => {
+                ui.label(RichText::new(t!("Deine Seitenleiste")).font(theme::semibold(20.0)));
+                let touch = crate::platform::MOBILE;
+                ui.label(
+                    RichText::new(if touch {
+                        t!("Wähle, welche Bereiche die Leiste unten zeigt. Du kannst das jederzeit in den Einstellungen ändern.")
+                    } else {
+                        t!("Wähle, was Velour links anzeigt – passend dazu, wofür du es nutzt. Du kannst das jederzeit unter Einstellungen → Oberfläche ändern.")
+                    })
+                    .color(t.text_dim),
+                );
+                ui.add_space(12.0);
+                let items: Vec<(&str, &str, &str)> = crate::config::NAV_ITEMS.iter().copied().filter(|x| !touch || matches!(x.0, "servers" | "videos" | "music")).collect();
+                // Quick picks for the usual ways to use Velour.
+                let presets: [(&str, &[&str]); 4] = [
+                    (t!("Alles"), &["videos", "music", "tv", "radio", "network", "playlists", "recent", "servers", "pins"]),
+                    (t!("Eigene Dateien"), &["videos", "music", "playlists", "recent", "pins", "network"]),
+                    (crate::i18n::tr("Medienserver"), &["servers", "recent"]),
+                    (t!("TV & Radio"), &["tv", "radio", "recent"]),
+                ];
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing = vec2(8.0, 8.0);
+                    for (label, on) in presets {
+                        let active = items.iter().all(|(id, _, _)| self.data.settings.nav_shown(id) == on.contains(id));
+                        if widgets::chip(ui, &t, label, active).clicked() {
+                            for (id, _, _) in &items {
+                                self.data.settings.set_nav_shown(id, on.contains(id));
+                            }
+                            self.mark_dirty();
+                        }
+                    }
+                });
+                ui.add_space(12.0);
+                egui::Grid::new("ob_nav").num_columns(2).spacing([28.0, 6.0]).show(ui, |ui| {
+                    for (i, (id, label, icon)) in items.iter().enumerate() {
+                        ui.horizontal(|ui| {
+                            ui.set_min_width(250.0);
+                            let mut on = self.data.settings.nav_shown(id);
+                            ui.label(RichText::new(*icon).font(theme::icon(17.0)).color(if on { t.accent } else { t.text_faint }));
+                            ui.label(RichText::new(crate::i18n::tr(label)).color(if on { t.text } else { t.text_dim }));
+                            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                widgets::toggle(ui, &t, &mut on);
+                            });
+                            if on != self.data.settings.nav_shown(id) {
+                                self.data.settings.set_nav_shown(id, on);
+                                self.mark_dirty();
+                            }
+                        });
+                        if i % 2 == 1 {
+                            ui.end_row();
+                        }
+                    }
+                });
+                next = Some(3);
+            }
             _ => {
                 ui.label(RichText::new(t!("Deine Bibliothek")).font(theme::semibold(20.0)));
                 ui.label(RichText::new(t!("Diese Ordner erscheinen in der Bibliothek. Du kannst jederzeit weitere hinzufügen.")).color(t.text_dim));
@@ -2014,7 +2122,7 @@ impl App {
             ui.add_space(400.0 - used);
         }
         ui.horizontal(|ui| {
-            for i in (0..3u8).filter(|i| !(crate::platform::MOBILE && *i == 1)) {
+            for i in (0..4u8).filter(|i| !(crate::platform::MOBILE && *i == 1)) {
                 let (r, _) = ui.allocate_exact_size(vec2(10.0, 10.0), Sense::hover());
                 ui.painter().circle_filled(r.center(), 4.0, if i == step { t.accent } else { t.hover });
             }

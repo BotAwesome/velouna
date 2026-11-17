@@ -13,6 +13,44 @@ use std::time::{Duration, Instant};
 #[derive(Clone)]
 pub struct LibDrag(pub Vec<String>);
 
+/// While files from the library are dragged, a small label follows the
+/// pointer: what is being carried, and how many.
+pub fn paint_drag_ghost(ctx: &egui::Context, t: &theme::Theme) {
+    let Some(drag) = egui::DragAndDrop::payload::<LibDrag>(ctx) else { return };
+    let Some(pos) = ctx.pointer_latest_pos() else { return };
+    let Some(first) = drag.0.first() else { return };
+    ctx.set_cursor_icon(egui::CursorIcon::Grabbing);
+    let icon = if media::is_audio(first) { ph::MUSIC_NOTES } else { ph::FILM_STRIP };
+    let mut name = media::display_name(first);
+    if name.chars().count() > 40 {
+        name = name.chars().take(39).collect::<String>() + "…";
+    }
+    let more = drag.0.len().saturating_sub(1);
+    egui::Area::new(Id::new("lib_drag_ghost"))
+        .order(egui::Order::Tooltip)
+        .fixed_pos(pos + vec2(14.0, 12.0))
+        .interactable(false)
+        .show(ctx, |ui| {
+            egui::Frame::new()
+                .fill(t.surface)
+                .stroke(Stroke::new(1.0, t.accent.gamma_multiply(0.6)))
+                .corner_radius(CornerRadius::same(theme::R_LG))
+                .inner_margin(egui::Margin::symmetric(10, 6))
+                .shadow(egui::Shadow { offset: [0, 6], blur: 18, spread: 0, color: Color32::from_black_alpha(120) })
+                .show(ui, |ui| {
+                    ui.horizontal(|ui| {
+                        ui.spacing_mut().item_spacing.x = 8.0;
+                        ui.label(RichText::new(icon).font(theme::icon(15.0)).color(t.accent));
+                        ui.label(RichText::new(name).size(13.0).color(t.text));
+                        if more > 0 {
+                            ui.label(RichText::new(format!("+{more}")).size(12.0).color(t.text_dim));
+                        }
+                    });
+                });
+        });
+    ctx.request_repaint();
+}
+
 const FONTS: &[&str] = &[
     "Segoe UI",
     "Segoe UI Semibold",

@@ -209,6 +209,18 @@ pub fn segmented<T: PartialEq + Copy>(ui: &mut Ui, t: &Theme, current: &mut T, i
     changed
 }
 
+/// Rounded selectable chip (quick picks).
+pub fn chip(ui: &mut Ui, t: &Theme, text: &str, active: bool) -> Response {
+    let col = if active { t.accent } else { t.text_dim };
+    let g = ui.painter().layout_no_wrap(text.to_string(), egui::FontId::proportional(13.0), col);
+    let (r, resp) = ui.allocate_exact_size(vec2(g.size().x + 28.0, 30.0), Sense::click());
+    let bg = if active { t.accent_soft } else if resp.hovered() { t.hover } else { t.elevated };
+    ui.painter().rect_filled(r, CornerRadius::same(15), bg);
+    let gh = g.size().y;
+    ui.painter().galley(pos2(r.left() + 14.0, r.center().y - gh / 2.0), g, col);
+    resp.on_hover_cursor(CursorIcon::PointingHand)
+}
+
 /// iOS-ish toggle switch in accent color.
 pub fn toggle(ui: &mut Ui, t: &Theme, on: &mut bool) -> Response {
     let (rect, mut resp) = ui.allocate_exact_size(vec2(36.0, 20.0), Sense::click());

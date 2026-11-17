@@ -4,10 +4,11 @@
 
 # Velour
 
-**A calm, fast media player for Windows, Linux and Android, built on mpv.**
+**A blazing fast media player for Windows, Linux and Android, built on mpv.**
 
-Your videos and music, your Plex server, thousands of free TV and radio stations –
-in one player with thin bars and a thick seek bar.
+Double-click a video and the picture is there in about half a second – even when Velour
+wasn't running. Your videos and music, your Plex, Jellyfin or Emby server, thousands of
+free TV and radio stations – in one player with thin bars and a thick seek bar.
 
 [![Latest release](https://img.shields.io/github/v/release/BotAwesome/velour?color=D83F5C&label=release)](https://github.com/BotAwesome/velour/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-1A1220)](LICENSE)
@@ -23,6 +24,23 @@ in one player with thin bars and a thick seek bar.
 <img src="docs/screenshots/desktop-player.jpg" alt="Velour on Windows: chapter preview above the seek bar">
 
 </div>
+
+## Blazing fast
+
+From double-click to the first frame on screen (or the first sound for music), measured
+with the release build on a laptop with an AMD Ryzen AI 7 350, its integrated Radeon 860M
+graphics and an NVMe SSD:
+
+| | Velour not running yet | Velour already open |
+|---|---|---|
+| Video, 1080p H.264 | **0.53 s** | 0.12 – 0.56 s |
+| Video, 4K HEVC 10-bit | **0.6 s** | 0.16 – 0.59 s |
+| Music, MP3 | **0.4 s** | 0.07 – 0.45 s |
+
+No splash screen and no library scan before playback: the file goes to mpv the moment
+the window can show a picture, decoded on the graphics card. Opening another file hands
+it to the window that is already open instead of starting a second Velour. The very first
+start after booting takes a little longer while the system reads Velour from disk.
 
 ## Highlights
 
@@ -58,9 +76,10 @@ shows the song that's playing.
 </td>
 <td valign="top">
 
-**Plex**<br>
-Sign in, browse your libraries, collections and playlists, search, and play – watch
-progress stays in sync with your server.
+**Plex, Jellyfin and Emby**<br>
+Sign in to Plex, or connect a Jellyfin or Emby server with its address, user name and
+password. Browse libraries, collections and playlists, search, and play – watch progress
+stays in sync with your server.
 
 </td>
 </tr>

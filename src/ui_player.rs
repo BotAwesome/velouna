@@ -69,13 +69,19 @@ impl App {
                 .show(ctx, |ui| self.bottom_bar(ui));
         }
         if chrome && self.lib.compact_open && player_view {
-            egui::SidePanel::left("lib_compact")
+            let w = self.data.settings.compact_lib_width.clamp(260.0, 560.0);
+            let resp = egui::SidePanel::left("lib_compact")
                 .resizable(true)
-                .default_width(340.0)
+                .default_width(w)
                 .width_range(260.0..=560.0)
                 .frame(egui::Frame::new().fill(self.t.panel))
                 .show_separator_line(false)
                 .show(ctx, |ui| self.library_compact(ui));
+            let nw = resp.response.rect.width();
+            if (nw - self.data.settings.compact_lib_width).abs() > 2.0 {
+                self.data.settings.compact_lib_width = nw;
+                self.dirty = true;
+            }
         }
         if chrome && self.right != RightPanel::None {
             let w = self.data.settings.sidebar_width;

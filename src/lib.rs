@@ -205,6 +205,11 @@ fn set_cert_bundle() {
     }
 }
 
+/// Start of the click-to-picture clock (see `mpv::timing`).
+pub fn program_start() {
+    mpv::timing::program_start();
+}
+
 pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
     // First, while no other thread runs (set_var).
     #[cfg(target_os = "linux")]

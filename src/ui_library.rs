@@ -957,9 +957,16 @@ impl App {
                         self.lib.search.clear();
                     }
                 }
-                let vicon = if self.lib.view == ViewMode::Grid { ph::SQUARES_FOUR } else { ph::LIST_BULLETS };
+                let side = compact && !crate::mobile::touch();
+                let view = if side { self.lib.compact_view } else { self.lib.view };
+                let vicon = if view == ViewMode::Grid { ph::SQUARES_FOUR } else { ph::LIST_BULLETS };
                 if icon_button(ui, &t, vicon, t!("Ansicht: Raster / Liste"), false).clicked() {
-                    self.lib.view = if self.lib.view == ViewMode::Grid { ViewMode::List } else { ViewMode::Grid };
+                    let next = if view == ViewMode::Grid { ViewMode::List } else { ViewMode::Grid };
+                    if side {
+                        self.lib.compact_view = next;
+                    } else {
+                        self.lib.view = next;
+                    }
                 }
                 // The TV list has its own order (channel count, then name).
                 if !matches!(self.lib.loc, LibLoc::Tv(_) | LibLoc::Radio(_)) {
@@ -1036,6 +1043,17 @@ impl App {
     // ------------------------------------------------------- compact panel
 
     pub fn library_compact(&mut self, ui: &mut Ui) {
+        // The panel is exactly as wide as it was dragged: the content is laid
+        // out in a child that does not grow the panel (a long title would
+        // otherwise push the width back out after every drag).
+        let full = ui.max_rect();
+        ui.allocate_rect(full, Sense::hover());
+        let mut inner = ui.new_child(egui::UiBuilder::new().max_rect(full).layout(*ui.layout()));
+        inner.set_clip_rect(full.intersect(ui.clip_rect()));
+        self.library_compact_inner(&mut inner);
+    }
+
+    fn library_compact_inner(&mut self, ui: &mut Ui) {
         let t = self.t;
         let full = ui.max_rect();
         let rail_w = 48.0;
@@ -1054,16 +1072,19 @@ impl App {
                 (3, ph::BROADCAST, t!("Netzwerk"), LibLoc::Network),
                 (4, ph::PLAYLIST, "Playlists", LibLoc::Playlists(None)),
                 (5, ph::CLOCK_COUNTER_CLOCKWISE, t!("Zuletzt gespielt"), LibLoc::Recent),
-                (6, ph::TELEVISION_SIMPLE, "Plex", LibLoc::Plex(crate::library::PlexLoc::Home)),
+                (6, ph::TELEVISION_SIMPLE, self.plex.backend().name(), LibLoc::Plex(crate::library::PlexLoc::Home)),
             ] {
+                if !self.data.settings.nav_shown(nav_id(sec)) {
+                    continue;
+                }
                 if icon_button(ui, &t, icon, tip, section == sec).clicked() {
                     self.lib.go(loc);
                 }
             }
-            if !self.data.pins.is_empty() {
+            let pins = if self.data.settings.nav_shown("pins") { self.data.pins.clone() } else { Vec::new() };
+            if !pins.is_empty() {
                 widgets::separator(ui, &t);
             }
-            let pins = self.data.pins.clone();
             for p in pins {
                 let icon = match p.target {
                     PinTarget::Folder(_) => ph::FOLDER_SIMPLE,
@@ -1144,10 +1165,11 @@ impl App {
         }
         let current = self.current_path();
         let music_tags = matches!(self.lib.loc, LibLoc::Music(_));
-        // `compact` is the narrow desktop sidebar (no room for tiles) or a
-        // touch screen, where tiles are smaller.
+        // `compact` is the narrow desktop sidebar (its own view setting,
+        // small tiles) or a touch screen, where tiles are smaller too.
         let touch = crate::mobile::touch();
-        let grid = self.lib.view == ViewMode::Grid && (!compact || touch);
+        let side = compact && !touch;
+        let grid = if side { self.lib.compact_view } else { self.lib.view } == ViewMode::Grid;
         if matches!(self.lib.loc, LibLoc::Music(MusicView::Albums) | LibLoc::Music(MusicView::Artists) | LibLoc::Music(MusicView::Genres)) {
             // Make sure all tags get read.
             let files: Vec<String> = self.lib.music_files.iter().map(|p| p.to_string_lossy().to_string()).collect();
@@ -1165,7 +1187,7 @@ impl App {
         // list could not scroll; tap and long-press still work with clicks.
         let row_sense = if crate::mobile::touch() { Sense::click() } else { Sense::click_and_drag() };
         if grid {
-            let card_w = if touch { 150.0 } else { 196.0 };
+            let card_w = if touch { 150.0 } else if side { 128.0 } else { 196.0 };
             let gap = 14.0;
             egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
                 let w = ui.available_width();
@@ -1229,6 +1251,9 @@ impl App {
             });
         } else {
             let row_h = if music_tags || compact { 44.0 } else { 52.0 };
+            // With video previews in the list, rows without a picture get a
+            // box of the same size, so all titles start in one line.
+            let thumb_column = entries.iter().any(|e| matches!(&e.kind, Kind::File(f) if media::is_video(f)));
             egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, entries.len(), |ui, range| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 for idx in range {
@@ -1270,8 +1295,22 @@ impl App {
                     }
                     if !drew {
                         let col = if matches!(e.kind, Kind::NewStream | Kind::NewPlaylist) || is_cur { t.accent } else { t.text_dim };
-                        ui.painter().text(pos2(x + 12.0, rect.center().y), Align2::CENTER_CENTER, e.icon, theme::icon(18.0), col);
-                        x += 32.0;
+                        if thumb_column {
+                            let r = Rect::from_min_size(pos2(x, rect.top() + 5.0), vec2(th_w, row_h - 10.0));
+                            ui.painter().rect_filled(r, CornerRadius::same(3), t.surface);
+                            ui.painter().text(r.center(), Align2::CENTER_CENTER, e.icon, theme::icon(18.0), col);
+                            if let Kind::File(f) = &e.kind {
+                                if let Some((pr, fin)) = self.progress_of(f) {
+                                    if !fin && pr > 0.01 {
+                                        widgets::progress_line(ui.painter(), Rect::from_min_max(pos2(r.left(), r.bottom() - 3.0), r.max), pr, &t);
+                                    }
+                                }
+                            }
+                            x += th_w + 10.0;
+                        } else {
+                            ui.painter().text(pos2(x + 12.0, rect.center().y), Align2::CENTER_CENTER, e.icon, theme::icon(18.0), col);
+                            x += 32.0;
+                        }
                     }
                     let watched = matches!(&e.kind, Kind::File(f) if self.progress_of(f).map(|p| p.1).unwrap_or(false));
                     let title_col = if is_cur { t.accent } else if watched { t.text_dim } else { t.text };
@@ -1359,11 +1398,14 @@ impl App {
                 (4, ph::PLAYLIST, "Playlists", LibLoc::Playlists(None)),
                 (5, ph::CLOCK_COUNTER_CLOCKWISE, t!("Zuletzt gespielt"), LibLoc::Recent),
             ] {
+                if !self.data.settings.nav_shown(nav_id(sec)) {
+                    continue;
+                }
                 if nav_item(ui, &t, icon, label, section == sec).clicked() {
                     self.lib.go(loc);
                 }
             }
-            if section == 2 {
+            if section == 2 && self.data.settings.nav_shown("music") {
                 ui.add_space(4.0);
                 for (label, loc) in [
                     (t!("Titel"), LibLoc::Music(MusicView::Songs)),
@@ -1383,11 +1425,16 @@ impl App {
                     }
                 }
             }
-            self.plex_nav(ui, nav_item);
-            ui.add_space(14.0);
-            ui.label(RichText::new(t!("ANGEHEFTET")).size(11.0).color(t.text_faint));
-            ui.add_space(2.0);
-            let pins = self.data.pins.clone();
+            if self.data.settings.nav_shown("servers") {
+                self.plex_nav(ui, nav_item);
+            }
+            let show_pins = self.data.settings.nav_shown("pins");
+            if show_pins {
+                ui.add_space(14.0);
+                ui.label(RichText::new(t!("ANGEHEFTET")).size(11.0).color(t.text_faint));
+                ui.add_space(2.0);
+            }
+            let pins = if show_pins { self.data.pins.clone() } else { Vec::new() };
             let mut unpin = None;
             for (i, p) in pins.iter().enumerate() {
                 let icon = match p.target {
@@ -1407,7 +1454,7 @@ impl App {
                     }
                 });
             }
-            if pins.is_empty() {
+            if pins.is_empty() && show_pins {
                 ui.label(RichText::new(t!("Rechtsklick auf einen Ordner → Anheften")).size(11.5).color(t.text_faint));
             }
             if let Some(i) = unpin {
@@ -1755,6 +1802,21 @@ impl App {
 fn section_title(ui: &mut Ui, t: &theme::Theme, s: &str) {
     ui.label(RichText::new(s).font(theme::semibold(16.0)).color(t.text));
     ui.add_space(8.0);
+}
+
+/// Settings id (`config::NAV_ITEMS`) of a library section number.
+fn nav_id(section: u8) -> &'static str {
+    match section {
+        1 => "videos",
+        2 => "music",
+        3 => "network",
+        4 => "playlists",
+        5 => "recent",
+        6 => "servers",
+        7 => "tv",
+        8 => "radio",
+        _ => "home",
+    }
 }
 
 fn nav_item(ui: &mut Ui, t: &theme::Theme, icon: &str, label: &str, selected: bool) -> egui::Response {

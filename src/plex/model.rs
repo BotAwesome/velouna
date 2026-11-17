@@ -597,6 +597,29 @@ pub struct Connection {
     pub relay: bool,
 }
 
+/// Which kind of media server a [`Server`] is.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum Backend {
+    #[default]
+    Plex,
+    Jellyfin,
+    Emby,
+}
+
+impl Backend {
+    pub fn name(self) -> &'static str {
+        match self {
+            Backend::Plex => "Plex",
+            Backend::Jellyfin => "Jellyfin",
+            Backend::Emby => "Emby",
+        }
+    }
+    /// Jellyfin and Emby speak the same (MediaBrowser) API.
+    pub fn media_browser(self) -> bool {
+        self != Backend::Plex
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Server {
     pub id: String,
@@ -606,6 +629,10 @@ pub struct Server {
     pub owner: String,
     pub presence: bool,
     pub connections: Vec<Connection>,
+    pub backend: Backend,
+    /// Jellyfin/Emby: the signed-in user and the device id the token belongs to.
+    pub user_id: String,
+    pub device_id: String,
 }
 
 pub fn parse_resources(v: &Value) -> Vec<Server> {
@@ -625,6 +652,7 @@ pub fn parse_resources(v: &Value) -> Vec<Server> {
                 .iter()
                 .map(|c| Connection { uri: s(c, "uri"), address: s(c, "address"), port: i(c, "port"), local: b(c, "local"), relay: b(c, "relay") })
                 .collect(),
+            ..Default::default()
         })
         .collect()
 }

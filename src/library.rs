@@ -117,6 +117,8 @@ pub struct LibraryState {
     pub search_open: bool,
     pub sort: SortMode,
     pub view: ViewMode,
+    /// The narrow library next to the player has its own view (list by default).
+    pub compact_view: ViewMode,
     pub compact_open: bool,
     pub listing: Option<Listing>,
     pub music_files: Vec<PathBuf>,
@@ -134,6 +136,7 @@ impl LibraryState {
             search_open: false,
             sort: SortMode::TitleAz,
             view: ViewMode::Grid,
+            compact_view: ViewMode::List,
             compact_open: false,
             listing: None,
             music_files: vec![],

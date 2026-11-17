@@ -244,6 +244,10 @@ pub struct App {
     /// Safe-area insets of the last frame [left, top, right, bottom].
     pub safe_insets: [f32; 4],
     pub launch_files: Vec<String>,
+    /// The command-line files are playing; files that processes started in
+    /// the same instant hand over shortly after join their list. `true`
+    /// once the first joined (the folder around a single file is dropped).
+    pub launch_joined: Option<bool>,
     pub pending_resume_restore: Option<config::ResumeMode>,
     pub prev_has_media: bool,
     /// Phone player state (gestures, zoom, brightness).
@@ -448,6 +452,7 @@ impl App {
             full_screen: egui::Rect::NOTHING,
             safe_insets: [0.0; 4],
             launch_files,
+            launch_joined: None,
             pending_resume_restore: None,
             prev_has_media: false,
             mob: Default::default(),
@@ -671,6 +676,33 @@ impl App {
             self.enqueue(&files);
         } else {
             self.open_paths(paths);
+        }
+    }
+
+    /// Files opened together with the command-line ones (Explorer starts
+    /// one process per file) go behind them in the same list, without
+    /// interrupting what already plays.
+    #[cfg(not(target_os = "android"))]
+    fn join_launch(&mut self, paths: Vec<String>) {
+        let mut files = Vec::new();
+        for p in paths {
+            let pp = std::path::Path::new(&p);
+            if pp.is_dir() {
+                files.extend(media::list_dir(pp, false).1.into_iter().map(|x| x.to_string_lossy().to_string()));
+            } else if media::is_media(&p) || media::is_url(&p) {
+                files.push(p);
+            }
+        }
+        let files = self.drop_missing(&files);
+        log::info!("single instance: {} file(s) join the started list", files.len());
+        let Some(p) = &self.player else { return };
+        if self.launch_joined == Some(false) {
+            // The list is the opened files, not the folder of the first one.
+            let _ = p.mpv.command(&["playlist-clear"]);
+            self.launch_joined = Some(true);
+        }
+        for f in &files {
+            p.load(f, LoadMode::Append, None);
         }
     }
 
@@ -1609,7 +1641,14 @@ impl App {
         let events = self.player.as_mut().map(|p| p.poll()).unwrap_or_default();
         for e in events {
             match e {
-                Event::FileLoaded => self.on_file_loaded(),
+                Event::FileLoaded => {
+                    mpv::timing::file_loaded();
+                    self.on_file_loaded();
+                }
+                Event::PlaybackRestart => {
+                    let video = self.player.as_ref().and_then(|p| p.mpv.get_string("vid")).is_some_and(|v| v != "no");
+                    mpv::timing::playing(video);
+                }
                 Event::EndFile { reason, error } if reason == mpv::END_ERROR => {
                     let msg = self.player.as_ref().map(|p| p.mpv.error_string(error)).unwrap_or_default();
                     self.osd(tf!("Datei konnte nicht abgespielt werden: {msg}"));
@@ -1778,17 +1817,17 @@ impl App {
                 // Started together with them (several files opened at once):
                 // one list.
                 self.launch_files.extend(files);
+            } else if self.launch_joined.is_some() && ctx.input(|i| i.time) < 0.5 && !files.is_empty() {
+                self.join_launch(files);
             } else if !files.is_empty() {
                 self.open_handed(files);
             }
         }
         let video_ready = self.video.as_ref().is_none_or(|v| v.ready());
-        // A moment's wait gathers files that other processes, started in
-        // the same instant, hand over.
-        let gathered = cfg!(target_os = "android") || ctx.input(|i| i.time) > 0.4;
-        if !self.launch_files.is_empty() && self.player.is_some() && video_ready && gathered {
+        if !self.launch_files.is_empty() && self.player.is_some() && video_ready {
             let files = std::mem::take(&mut self.launch_files);
             self.open_paths(files);
+            self.launch_joined = Some(false);
         }
 
         // keep time display fresh while playing
@@ -1909,6 +1948,7 @@ impl eframe::App for App {
         }
         self.handle_input(ctx);
         self.draw(ctx);
+        crate::ui_panels::paint_drag_ghost(ctx, &self.t);
         // The render context is made on the first video paint; a local file
         // opened before any video was on screen found none and stayed black.
         if let Some(v) = self.video.as_ref().filter(|v| !v.ready()) {
