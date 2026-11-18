@@ -8,13 +8,13 @@ use winit::platform::android::activity::AndroidApp;
 static APP: OnceLock<AndroidApp> = OnceLock::new();
 
 pub fn init(app: &AndroidApp) {
-    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("Velour"));
+    android_logger::init_once(android_logger::Config::default().with_max_level(log::LevelFilter::Info).with_tag("Velouna"));
     if let Some(files) = app.internal_data_path() {
         let cache = files.parent().map(|p| p.join("cache")).unwrap_or_else(|| files.join("cache"));
         // Set before any other thread starts.
         unsafe {
-            std::env::set_var("VELOUR_DATA_DIR", &files);
-            std::env::set_var("VELOUR_CACHE_DIR", &cache);
+            std::env::set_var("VELOUNA_DATA_DIR", &files);
+            std::env::set_var("VELOUNA_CACHE_DIR", &cache);
         }
     }
     let _ = APP.set(app.clone());
@@ -79,7 +79,7 @@ pub fn set_orientation(o: i32) {
     });
 }
 
-/// Calls a `void name(boolean)` method of `VelourActivity` (runs on the UI
+/// Calls a `void name(boolean)` method of `VelounaActivity` (runs on the UI
 /// thread there). Only when the value changes.
 fn activity_flag(state: &std::sync::atomic::AtomicU8, name: &str, on: bool) {
     use std::sync::atomic::Ordering;
@@ -153,12 +153,12 @@ pub fn install_apk(path: &str) {
     });
 }
 
-/// The user allowed Velour to install apps (needed for updates).
+/// The user allowed Velouna to install apps (needed for updates).
 pub fn can_install_packages() -> bool {
     with_activity(|env, activity| env.call_method(activity, "canInstallPackages", "()Z", &[])?.z()).unwrap_or(true)
 }
 
-/// Opens Android's "install unknown apps" page for Velour.
+/// Opens Android's "install unknown apps" page for Velouna.
 pub fn open_install_permission() {
     with_activity(|env, activity| {
         env.call_method(activity, "openInstallPermission", "()V", &[])?;
@@ -200,7 +200,7 @@ pub fn set_gesture_exclusion(r: Option<[i32; 4]>) {
 /// System bars, display cutout and soft keyboard in pixels:
 /// [left, top, right, bottom].
 pub fn system_insets_px() -> Option<[f32; 4]> {
-    // VelourActivity.getSafeInsets: window metrics, so a rotation shows up
+    // VelounaActivity.getSafeInsets: window metrics, so a rotation shows up
     // right away (the keyboard comes from the decor view's insets).
     with_activity(|env, activity| {
         let arr = env.call_method(activity, "getSafeInsets", "()[I", &[])?.l()?;
@@ -213,7 +213,7 @@ pub fn system_insets_px() -> Option<[f32; 4]> {
 
 // ------------------------------------------------------------ storage
 
-/// What Velour may read on the device.
+/// What Velouna may read on the device.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Storage {
     pub videos: bool,
@@ -228,7 +228,7 @@ pub fn storage() -> Option<Storage> {
     Some(Storage { videos: bits & 1 != 0, music: bits & 2 != 0, all_files: bits & 4 != 0 })
 }
 
-/// Velour asked for the storage permission before.
+/// Velouna asked for the storage permission before.
 pub fn storage_asked() -> bool {
     with_activity(|env, activity| env.call_method(activity, "storageAsked", "()Z", &[])?.z()).unwrap_or(true)
 }
@@ -242,7 +242,7 @@ pub fn request_storage() {
     });
 }
 
-/// Opens the "all files access" page for Velour.
+/// Opens the "all files access" page for Velouna.
 pub fn open_all_files_access() {
     with_activity(|env, activity| {
         env.call_method(activity, "openAllFilesAccess", "()V", &[])?;
@@ -399,7 +399,7 @@ fn media_loop(m: std::sync::Arc<crate::mpv::Mpv>) {
         // Radio: the song on top, the station below.
         let (title, text) = match meta("icy-title").filter(|s| *s != title.trim()) {
             Some(song) => (song, title),
-            None => (title, meta("artist").or_else(|| meta("album_artist")).unwrap_or_else(|| "Velour".into())),
+            None => (title, meta("artist").or_else(|| meta("album_artist")).unwrap_or_else(|| "Velouna".into())),
         };
         let playing = !m.get("pause").and_then(|v| v.as_bool()).unwrap_or(true);
         let pos = m.get_f64("time-pos").unwrap_or(0.0);

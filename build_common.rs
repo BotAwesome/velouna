@@ -1,5 +1,5 @@
 // Shared build script of the app (build.rs) and the installer (setup/build.rs).
-// Embeds the Velour icon and version info into the Windows executable.
+// Embeds the Velouna icon and version info into the Windows executable.
 // The icon is rasterized from the same geometry the app draws (src/logo.rs).
 
 include!("src/logo.rs");
@@ -22,7 +22,7 @@ const MANIFEST: &str = r#"<?xml version="1.0" encoding="UTF-8" standalone="yes"?
   </dependentAssembly></dependency>
 </assembly>"#;
 
-/// Installer only: the file types Velour plays, read from src/media.rs so
+/// Installer only: the file types Velouna plays, read from src/media.rs so
 /// the "Open with" registration never drifts from what the player accepts.
 fn extra_setup() {
     println!("cargo:rerun-if-changed=../src/media.rs");
@@ -88,7 +88,7 @@ fn write_ico(path: &Path, sizes: &[usize]) -> std::io::Result<()> {
 
 fn main() {
     // Shared by the app and the installer crate (setup/build.rs includes this file).
-    let setup = std::env::var("CARGO_PKG_NAME").as_deref() == Ok("velour-setup");
+    let setup = std::env::var("CARGO_PKG_NAME").as_deref() == Ok("velouna-setup");
     let up = if setup { "../" } else { "" };
     println!("cargo:rerun-if-changed={up}src/logo.rs");
     println!("cargo:rerun-if-changed={up}build_common.rs");
@@ -96,18 +96,18 @@ fn main() {
         return;
     }
     let out = std::path::PathBuf::from(std::env::var("OUT_DIR").unwrap());
-    let ico = out.join("velour.ico");
+    let ico = out.join("velouna.ico");
     if let Err(e) = write_ico(&ico, &[16, 20, 24, 32, 40, 48, 64, 128, 256]) {
         println!("cargo:warning=could not write icon: {e}");
         return;
     }
     let mut res = winresource::WindowsResource::new();
     res.set_icon(ico.to_str().unwrap());
-    res.set("ProductName", "Velour");
-    res.set("FileDescription", if setup { "Velour Setup" } else { "Velour Media Player" });
+    res.set("ProductName", "Velouna");
+    res.set("FileDescription", if setup { "Velouna Setup" } else { "Velouna Media Player" });
     if setup {
         // Without a manifest Windows treats "*setup*" exes as installers and
-        // forces UAC; Velour installs per user and needs no elevation.
+        // forces UAC; Velouna installs per user and needs no elevation.
         res.set_manifest(MANIFEST);
         extra_setup();
     }

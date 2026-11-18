@@ -114,10 +114,6 @@ pub fn section_label(ui: &mut Ui, t: &Theme, text: &str) {
     ui.add_space(2.0);
 }
 
-pub fn heading(ui: &mut Ui, t: &Theme, text: &str) {
-    ui.label(egui::RichText::new(text).font(theme::semibold(15.0)).color(t.text));
-}
-
 /// Tabs with orange underline. Returns true if selection changed.
 pub fn tabs<T: PartialEq + Copy>(ui: &mut Ui, t: &Theme, current: &mut T, items: &[(T, &str, &str)]) -> bool {
     let mut changed = false;
@@ -336,11 +332,11 @@ pub fn key_chip(ui: &mut Ui, t: &Theme, text: &str) {
     ui.painter().galley(rect.center() - g.size() / 2.0, g, t.text);
 }
 
-/// The Velour mark in `color`, fitted into `rect`. The drapes are curved
+/// The Velouna mark in `color`, fitted into `rect`. The drapes are curved
 /// (not convex), so the mark is rasterized once into a mipmapped mask
 /// texture and tinted per call.
 pub fn draw_logo(p: &egui::Painter, rect: Rect, color: Color32) {
-    let id = egui::Id::new("velour-logo-mask");
+    let id = egui::Id::new("velouna-logo-mask");
     let ctx = p.ctx();
     let tex = match ctx.data(|d| d.get_temp::<egui::TextureHandle>(id)) {
         Some(t) => t,
@@ -348,7 +344,7 @@ pub fn draw_logo(p: &egui::Painter, rect: Rect, color: Color32) {
             let n = 256;
             let img = egui::ColorImage::from_rgba_unmultiplied([n, n], &crate::logo::logo_mask(n));
             let opts = egui::TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear));
-            let t = ctx.load_texture("velour-logo", img, opts);
+            let t = ctx.load_texture("velouna-logo", img, opts);
             ctx.data_mut(|d| d.insert_temp(id, t.clone()));
             t
         }

@@ -31,7 +31,6 @@ impl App {
             self.was_fullscreen = fs;
         }
         let screen = ctx.screen_rect();
-        let has_media = self.has_media();
         // Leave the player only when mpv is idle, not while it loads the
         // next playlist entry.
         let active = self.player_active();
@@ -214,7 +213,7 @@ impl App {
             left_end = ui.min_rect().right();
         });
 
-        ui.allocate_ui_at_rect(rect, |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = 2.0;
                 ui.add_space(6.0);
@@ -339,7 +338,7 @@ impl App {
             ui.close();
             self.dialog = Some(Dialog::Settings);
         }
-        if widgets::menu_item(ui, &t, ph::INFO, t!("Über Velour"), "", false).clicked() {
+        if widgets::menu_item(ui, &t, ph::INFO, t!("Über Velouna"), "", false).clicked() {
             ui.close();
             self.dialog = Some(Dialog::About);
         }
@@ -381,7 +380,7 @@ impl App {
         let rect = ui.max_rect();
         let layout = self.data.settings.layout.clone();
         let spacing = 4.0;
-        ui.allocate_ui_at_rect(rect, |ui| {
+        ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
                 ui.spacing_mut().item_spacing.x = spacing;
                 ui.add_space(10.0);
@@ -389,10 +388,12 @@ impl App {
                     self.control_item(ui, *item);
                 }
                 ui.add_space(6.0);
-                let right_w: f32 = layout.right.iter().map(|i| self.item_width(*i) + spacing).sum::<f32>() + 16.0;
+                let viz_w = self.viz_button_width();
+                let right_w: f32 = layout.right.iter().map(|i| self.item_width(*i) + spacing).sum::<f32>() + 16.0 + viz_w;
                 let seek_w = (ui.available_width() - right_w).max(60.0);
                 self.seek_bar(ui, seek_w);
                 ui.add_space(6.0);
+                self.viz_button(ui);
                 for item in &layout.right {
                     self.control_item(ui, *item);
                 }
@@ -681,7 +682,9 @@ impl App {
         let Some(p) = &self.player else { return };
         let st = &p.st;
         if !st.has_media() || st.duration <= 0.0 {
-            if st.has_media() {
+            // A local file only lacks its length while it loads; streams
+            // without one are live.
+            if st.has_media() && media::is_url(&st.path) {
                 // live stream: animated stripe
                 painter.rect_filled(track, CornerRadius::same(3), t.accent_soft);
                 painter.text(track.center(), Align2::CENTER_CENTER, "LIVE", FontId::proportional(10.0), t.accent);
@@ -876,30 +879,23 @@ impl App {
         painter.rect_filled(rect, CornerRadius::ZERO, t.video_bg);
         let Some((p, st)) = self.player.as_ref().map(|p| (p.ctl.clone(), p.st.clone())) else { return };
 
-        if st.is_audio_only() && !st.has_cover() {
-            let logo = self.stream_logos.get(&st.path).cloned().and_then(|u| self.logos.get(&u, || u.clone()));
-            self.music_art(&painter, rect, &st, logo);
+        let viz = self.viz_shown(&st) && self.draw_visualizer(ui, &painter, rect, &st);
+        if !self.viz_shown(&st) {
+            self.songs.cancel();
+        }
+        // Music (and radio): the now-playing page. Pictures opened on their
+        // own have no audio track and stay a plain picture.
+        let music = st.is_audio_only() && (st.tracks.is_empty() || st.tracks_of("audio").next().is_some());
+        if viz {
+            // drawn by the visualizer
+        } else if music {
+            let inset = if overlay && bars_visible { BOTTOM_H } else { 0.0 };
+            self.now_playing_page(ui, rect, &st, inset);
         } else if let Some(v) = &self.video {
             v.paint(&painter, rect);
         }
         if let Some(err) = self.video.as_ref().and_then(|v| v.error()) {
             painter.text(rect.center(), Align2::CENTER_CENTER, err, FontId::proportional(14.0), t.danger);
-        }
-        if st.is_audio_only() && st.has_cover() {
-            // Title overlay for music with cover art.
-            let band = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 90.0), rect.max);
-            let mut mesh = egui::Mesh::default();
-            mesh.colored_vertex(band.left_top(), Color32::TRANSPARENT);
-            mesh.colored_vertex(band.right_top(), Color32::TRANSPARENT);
-            mesh.colored_vertex(band.right_bottom(), Color32::from_black_alpha(200));
-            mesh.colored_vertex(band.left_bottom(), Color32::from_black_alpha(200));
-            mesh.add_triangle(0, 1, 2);
-            mesh.add_triangle(0, 2, 3);
-            painter.add(egui::Shape::mesh(mesh));
-            let title = st.meta("title").map(|s| s.to_string()).unwrap_or(st.media_title.clone());
-            painter.text(pos2(band.left() + 24.0, band.bottom() - 46.0), Align2::LEFT_BOTTOM, title, theme::semibold(20.0), Color32::WHITE);
-            let sub = [st.meta("artist"), st.meta("album")].iter().flatten().cloned().collect::<Vec<_>>().join(" · ");
-            painter.text(pos2(band.left() + 24.0, band.bottom() - 22.0), Align2::LEFT_BOTTOM, sub, FontId::proportional(13.0), Color32::from_gray(200));
         }
 
         if st.buffering {
@@ -969,34 +965,6 @@ impl App {
         }
     }
 
-    fn music_art(&self, painter: &egui::Painter, rect: Rect, st: &crate::player::PlayerState, logo: Option<crate::plex::images::Shown>) {
-        let t = self.t;
-        let c = rect.center();
-        let s = (rect.height() * 0.32).clamp(60.0, 240.0);
-        // Placeholder (audio without cover, or a title still loading): just
-        // the logo, muted, no card behind it.
-        let card = Rect::from_center_size(c - vec2(0.0, 30.0), vec2(s * 1.3, s * 1.3));
-        let mix = |c: u8| (c as f32 * 0.4 + 40.0 * 0.6) as u8;
-        let muted = Color32::from_rgb(mix(t.accent.r()), mix(t.accent.g()), mix(t.accent.b()));
-        match logo {
-            // Radio station logo on a light card (many are dark-on-transparent).
-            Some(img) => {
-                let k = (card.width() * 0.78 / img.size.x).min(card.height() * 0.78 / img.size.y);
-                painter.rect_filled(card, CornerRadius::same(theme::R_LG + 4), Color32::from_gray(235));
-                let fit = Rect::from_center_size(card.center(), img.size * k);
-                painter.image(img.id, fit, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::from_white_alpha((img.alpha * 255.0) as u8));
-            }
-            None => widgets::draw_logo(painter, Rect::from_center_size(card.center(), vec2(s * 0.7, s * 0.7)), muted),
-        }
-        let title = st.meta("title").map(|s| s.to_string()).unwrap_or(st.media_title.clone());
-        painter.text(pos2(c.x, card.bottom() + 28.0), Align2::CENTER_CENTER, title, theme::semibold(20.0), t.text);
-        let sub = match st.now_playing() {
-            Some(song) => song.to_string(),
-            None => [st.meta("artist"), st.meta("album")].iter().flatten().cloned().collect::<Vec<_>>().join(" · "),
-        };
-        painter.text(pos2(c.x, card.bottom() + 54.0), Align2::CENTER_CENTER, sub, FontId::proportional(13.5), t.text_dim);
-    }
-
     fn pip_overlay(&mut self, ui: &mut Ui, rect: Rect) {
         let t = self.t;
         let ctx = ui.ctx().clone();
@@ -1013,7 +981,7 @@ impl App {
             let r = Rect::from_min_max(pos2(rect.left(), rect.bottom() - 4.0), rect.max);
             widgets::progress_line(painter, r, (st.time / st.duration) as f32, &t);
         }
-        let mut btn = |ui: &mut Ui, pos: Pos2, icon: &str, size: f32, id: &str| -> bool {
+        let btn = |ui: &mut Ui, pos: Pos2, icon: &str, size: f32, id: &str| -> bool {
             let r = Rect::from_center_size(pos, vec2(size + 14.0, size + 14.0));
             let resp = ui.interact(r, Id::new(("pip", id)), Sense::click());
             let bg = if resp.hovered() { Color32::from_black_alpha(200) } else { Color32::from_black_alpha(140) };

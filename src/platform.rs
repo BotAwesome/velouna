@@ -46,6 +46,7 @@ pub fn open_url(url: &str) {
 
 /// What playback needs to stay awake: nothing, the system (music: no
 /// suspend) or also the display (video: no screen saver, no blanking).
+#[cfg(not(target_os = "android"))]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Awake {
     No = 0,
@@ -55,7 +56,7 @@ pub enum Awake {
 
 /// Keeps the computer awake while something plays. Called every frame; acts
 /// only on changes. libmpv's render API leaves this to the app (mpv's own
-/// `stop-screensaver` lives in its window code, which Velour does not use).
+/// `stop-screensaver` lives in its window code, which Velouna does not use).
 /// Windows: SetThreadExecutionState on the UI thread. Linux: the desktop
 /// portal's Inhibit and org.freedesktop.ScreenSaver, from a thread that
 /// keeps the D-Bus connection (and so the inhibition) open.
@@ -101,7 +102,7 @@ mod linux_awake {
         static TX: OnceLock<Mutex<Sender<Awake>>> = OnceLock::new();
         let tx = TX.get_or_init(|| {
             let (tx, rx) = channel();
-            let _ = std::thread::Builder::new().name("velour-inhibit".into()).spawn(move || run(rx));
+            let _ = std::thread::Builder::new().name("velouna-inhibit".into()).spawn(move || run(rx));
             Mutex::new(tx)
         });
         if let Ok(tx) = tx.lock() {
@@ -141,7 +142,7 @@ mod linux_awake {
             }
             // Desktops whose portal has no Inhibit still have this one.
             if display {
-                match conn.call_method(Some(SAVER), "/org/freedesktop/ScreenSaver", Some(SAVER), "Inhibit", &("Velour", reason)) {
+                match conn.call_method(Some(SAVER), "/org/freedesktop/ScreenSaver", Some(SAVER), "Inhibit", &("Velouna", reason)) {
                     Ok(reply) => cookie = reply.body().deserialize::<u32>().ok(),
                     Err(e) => log::info!("keep awake: ScreenSaver: {e}"),
                 }
@@ -235,11 +236,11 @@ mod linux_fonts {
 
 /// App data folder override (Android: the app's private storage).
 pub fn data_dir_override() -> Option<std::path::PathBuf> {
-    std::env::var_os("VELOUR_DATA_DIR").map(Into::into)
+    std::env::var_os("VELOUNA_DATA_DIR").map(Into::into)
 }
 
 pub fn cache_dir_override() -> Option<std::path::PathBuf> {
-    std::env::var_os("VELOUR_CACHE_DIR").map(Into::into)
+    std::env::var_os("VELOUNA_CACHE_DIR").map(Into::into)
 }
 
 /// Text from the system clipboard.
@@ -260,7 +261,7 @@ pub fn clipboard_text() -> String {
 /// (GNOME Keyring, KWallet) on desktop; on Android a file
 /// in the app's private storage (sandboxed per app by the OS).
 pub mod secret {
-    /// A separate data folder (`VELOUR_DATA_DIR`) is a separate profile,
+    /// A separate data folder (`VELOUNA_DATA_DIR`) is a separate profile,
     /// sign-ins included: its secrets get their own entries.
     #[cfg(not(target_os = "android"))]
     fn service_name(service: &str) -> String {

@@ -17,13 +17,14 @@ use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 pub const PAGE: usize = 60;
-const KEYRING_SERVICE: &str = "Velour";
-const LEGACY_KEYRING_SERVICE: &str = "VLB";
+const KEYRING_SERVICE: &str = "Velouna";
+/// Credential-store names of earlier app names, newest first.
+const LEGACY_KEYRING_SERVICES: &[&str] = &["Velour", "VLB"];
 const KEYRING_USER: &str = "plex-token";
 
 // ------------------------------------------------------------ registry
 
-/// What Velour knows about a Plex stream that sits in mpv's playlist.
+/// What Velouna knows about a Plex stream that sits in mpv's playlist.
 #[derive(Clone, Debug)]
 pub struct Remote {
     pub rating_key: String,
@@ -31,6 +32,12 @@ pub struct Remote {
     pub duration: f64,
     pub conn: Conn,
     pub kind: Kind,
+    /// For the queue rows: the item's own title, the line under it (artist
+    /// of a track, show of an episode), the album and an image path.
+    pub name: String,
+    pub sub: String,
+    pub album: String,
+    pub thumb: String,
 }
 
 /// How to reach one server: everything a worker needs for a request.
@@ -87,16 +94,24 @@ pub fn authorized(url: &str) -> String {
 
 use crate::platform::secret;
 
-fn load_token() -> Option<String> {
-    if let Some(t) = secret::get(KEYRING_SERVICE, KEYRING_USER) {
+/// A stored secret; one saved under an earlier app name is moved over.
+fn get_secret(user: &str) -> Option<String> {
+    if let Some(t) = secret::get(KEYRING_SERVICE, user) {
         return Some(t);
     }
-    // Sign-ins from before the rename live under the working title; move them over.
-    let t = secret::get(LEGACY_KEYRING_SERVICE, KEYRING_USER)?;
-    if store_token(&t) {
-        secret::delete(LEGACY_KEYRING_SERVICE, KEYRING_USER);
+    for old in LEGACY_KEYRING_SERVICES {
+        if let Some(t) = secret::get(old, user) {
+            if secret::set(KEYRING_SERVICE, user, &t) {
+                secret::delete(old, user);
+            }
+            return Some(t);
+        }
     }
-    Some(t)
+    None
+}
+
+fn load_token() -> Option<String> {
+    get_secret(KEYRING_USER)
 }
 fn store_token(t: &str) -> bool {
     secret::set(KEYRING_SERVICE, KEYRING_USER, t)
@@ -112,7 +127,7 @@ fn mb_key(id: &str) -> String {
 
 /// A saved Jellyfin/Emby server, with its token from the credential store.
 fn media_server(m: &MediaServerConfig) -> Option<Server> {
-    let token = secret::get(KEYRING_SERVICE, &mb_key(&m.id))?;
+    let token = get_secret(&mb_key(&m.id))?;
     Some(Server {
         id: m.id.clone(),
         name: m.name.clone(),
@@ -158,7 +173,6 @@ pub struct ActiveServer {
     pub name: String,
     pub base: String,
     pub token: String,
-    pub owned: bool,
     pub backend: Backend,
     pub user_id: String,
     pub device_id: String,
@@ -186,7 +200,7 @@ pub enum St<T> {
 
 #[derive(Clone)]
 enum Loaded {
-    Items(Arc<Vec<Item>>, i64),
+    Items(Arc<Vec<Item>>),
     Hubs(Arc<Vec<Hub>>),
     Meta(Arc<Item>),
     Chars(Arc<Vec<(String, i64)>>),
@@ -348,7 +362,7 @@ impl Plex {
         if let Some(t) = token {
             p.token = Some(t.clone());
             p.status = Status::Connecting(if cfg.server_name.is_empty() { t!("Anmelden…").into() } else { tf!("Verbinde mit {}…", cfg.server_name) });
-            p.user = Some(User { name: cfg.user_name.clone(), thumb: String::new() });
+            p.user = Some(User { name: cfg.user_name.clone(), });
             let _ = p.jobs.send(Job::Account { token: t });
         }
         p.servers = cfg.media_servers.iter().filter_map(media_server).collect();
@@ -380,7 +394,7 @@ impl Plex {
     /// Signs in to a Jellyfin or Emby server (result arrives in `poll`).
     pub fn add_media_server(&mut self, url: &str, user: &str, password: &str) {
         self.mb_login = MbLogin { busy: true, error: None };
-        let device_id = format!("velour-{}", random_id());
+        let device_id = format!("velouna-{}", random_id());
         let _ = self.jobs.send(Job::MbLogin { url: url.trim().to_string(), user: user.trim().to_string(), password: password.to_string(), device_id });
     }
 
@@ -582,7 +596,7 @@ impl Plex {
                         cfg.last_uri = Some(base.clone());
                         dirty = true;
                     }
-                    self.server = Some(ActiveServer { id: s.id, name: s.name, base, token: s.token, owned: s.owned, backend: s.backend, user_id: s.user_id, device_id: s.device_id });
+                    self.server = Some(ActiveServer { id: s.id, name: s.name, base, token: s.token, backend: s.backend, user_id: s.user_id, device_id: s.device_id });
                     self.sections = sections;
                     self.status = Status::Ready;
                     self.generation += 1;
@@ -655,13 +669,6 @@ impl Plex {
         self.generation += 1;
     }
 
-    /// Drops cached entries whose request path contains `needle`.
-    pub fn invalidate(&mut self, needle: &str) {
-        self.cache.retain(|k, _| !k.contains(needle));
-        self.lists.retain(|k, _| !k.contains(needle));
-        self.generation += 1;
-    }
-
     /// Drops everything that shows play state (hubs, on deck …), keeping big lists.
     pub fn invalidate_play_state(&mut self) {
         self.cache.retain(|k, _| !(k.starts_with("H|") || k.contains("/children") || k.contains("allLeaves") || k.starts_with("M|")));
@@ -692,7 +699,7 @@ impl Plex {
     }
     pub fn items(&mut self, path: &str) -> St<Arc<Vec<Item>>> {
         match self.fetch(FetchKind::Items, "I", path) {
-            Some(Loaded::Items(i, _)) => St::Ready(i),
+            Some(Loaded::Items(i)) => St::Ready(i),
             Some(Loaded::Err(e)) => St::Failed(e),
             _ => St::Loading,
         }
@@ -765,7 +772,7 @@ impl Plex {
         };
         for l in self.cache.values_mut() {
             match l {
-                Loaded::Items(v, _) => fix(v),
+                Loaded::Items(v) => fix(v),
                 Loaded::Hubs(h) => {
                     if h.iter().any(|h| h.items.iter().any(|i| i.rating_key == rating_key)) {
                         for hub in Arc::make_mut(h).iter_mut() {
@@ -981,7 +988,7 @@ fn run_job(http: &Http, job: Job) -> Option<Res> {
         }
         Job::Fetch { key, conn, path, kind, sections } if conn.backend.media_browser() => {
             let l = match kind {
-                FetchKind::Items => mb::items(http, &conn, &path).map(|(i, n)| Loaded::Items(Arc::new(i), n)),
+                FetchKind::Items => mb::items(http, &conn, &path).map(|(i, _)| Loaded::Items(Arc::new(i))),
                 FetchKind::Hubs => mb::hubs(http, &conn, &path, &sections).map(|h| Loaded::Hubs(Arc::new(h))),
                 FetchKind::Meta => {
                     let id = path.trim_start_matches("/library/metadata/").split('?').next().unwrap_or("").to_string();
@@ -997,8 +1004,7 @@ fn run_job(http: &Http, job: Job) -> Option<Res> {
             let l = match http.get(&base, &token, &path) {
                 Ok(v) => match kind {
                     FetchKind::Items => {
-                        let (items, total) = model::parse_items(&v);
-                        Loaded::Items(Arc::new(items), total)
+                        Loaded::Items(Arc::new(model::parse_items(&v).0))
                     }
                     FetchKind::Hubs => Loaded::Hubs(Arc::new(model::parse_hubs(&v))),
                     FetchKind::Meta => match model::parse_items(&v).0.into_iter().next() {

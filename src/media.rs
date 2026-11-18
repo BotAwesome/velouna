@@ -436,6 +436,12 @@ fn extract_frame(ffmpeg: &Path, path: &str, at: f64, w: usize, h: usize, fast: b
     if out.len() == w * h * 4 { Some(out) } else { None }
 }
 
+/// The embedded cover of `path` as a `size`×`size` RGBA square (a cover
+/// that isn't square gets dark bars).
+pub fn cover_art(ffmpeg: &Path, path: &str, size: usize) -> Option<Vec<u8>> {
+    extract_frame(ffmpeg, path, 0.0, size, size, false)
+}
+
 fn probe(ffprobe: &Path, path: &str) -> Option<ProbeInfo> {
     let mut cmd = Command::new(ffprobe);
     cmd.args(["-v", "error", "-print_format", "json", "-show_format", "-show_streams", path]);
@@ -612,11 +618,8 @@ impl MediaTools {
 
     /// Loads a cached library thumbnail from disk, or schedules generation.
     pub fn request_thumb(&self, path: &str, key: &str) -> Option<Vec<u8>> {
-        let file = crate::config::cache_dir().join("thumbs").join(format!("{key}.rgba"));
-        if let Ok(b) = std::fs::read(&file) {
-            if b.len() == THUMB_W * THUMB_H * 4 {
-                return Some(b);
-            }
+        if let Some(b) = load_thumb(key) {
+            return Some(b);
         }
         if let Some(j) = &self.jobs {
             let _ = j.send(Job::Thumb { path: path.to_string(), key: key.to_string() });
@@ -766,11 +769,40 @@ fn thumb_job(ffmpeg: Option<&Path>, ffprobe: Option<&Path>, path: &str) -> Optio
     let rgba = extract_frame(ff, path, at, THUMB_W, THUMB_H, false).or_else(|| {
         if at > 0.0 { extract_frame(ff, path, 0.0, THUMB_W, THUMB_H, false) } else { None }
     })?;
-    let dir = crate::config::cache_dir().join("thumbs");
-    let _ = std::fs::create_dir_all(&dir);
-    let key = MediaTools::thumb_key(path);
-    let _ = std::fs::write(dir.join(format!("{key}.rgba")), &rgba);
+    save_thumb(&MediaTools::thumb_key(path), &rgba);
     Some(rgba)
+}
+
+fn thumb_file(key: &str) -> PathBuf {
+    crate::config::cache_dir().join("thumbs").join(format!("{key}.jpg"))
+}
+
+/// Stores a library thumbnail as JPEG (~12 KB instead of 225 KB raw).
+fn save_thumb(key: &str, rgba: &[u8]) {
+    let Some(img) = image::RgbaImage::from_raw(THUMB_W as u32, THUMB_H as u32, rgba.to_vec()) else { return };
+    let rgb = image::DynamicImage::ImageRgba8(img).to_rgb8();
+    let mut out = Vec::new();
+    if image::codecs::jpeg::JpegEncoder::new_with_quality(&mut out, 82).encode_image(&rgb).is_err() {
+        return;
+    }
+    let file = thumb_file(key);
+    if let Some(dir) = file.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    // write next to it and rename, so a reader never sees half a file
+    let tmp = file.with_extension("tmp");
+    if std::fs::write(&tmp, &out).is_ok() {
+        let _ = std::fs::rename(&tmp, &file);
+    }
+}
+
+/// A cached thumbnail as RGBA, if there is one.
+fn load_thumb(key: &str) -> Option<Vec<u8>> {
+    let file = thumb_file(key);
+    let b = std::fs::read(&file).ok()?;
+    let img = image::load_from_memory_with_format(&b, image::ImageFormat::Jpeg).ok()?.to_rgba8();
+    crate::cache::touch(&file);
+    (img.width() as usize == THUMB_W && img.height() as usize == THUMB_H).then(|| img.into_raw())
 }
 
 pub fn url_encode(s: &str) -> String {

@@ -1,16 +1,16 @@
 [package]
-name = "velour-setup"
+name = "velouna-setup"
 version = "0.1.2"
 edition = "2024"
-description = "Installer for Velour"
+description = "Installer for Velouna"
 
 [[bin]]
-name = "velour-setup"
+name = "velouna-setup"
 path = "src/main.rs"
 
 # Build tool: appends the compressed program files to the setup stub.
 [[bin]]
-name = "velour-pack"
+name = "velouna-pack"
 path = "src/pack.rs"
 
 [dependencies]

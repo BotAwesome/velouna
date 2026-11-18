@@ -159,7 +159,7 @@ fn agent() -> ureq::Agent {
     ureq::AgentBuilder::new()
         .timeout_connect(Duration::from_secs(10))
         .timeout_read(Duration::from_secs(60))
-        .user_agent(&format!("Velour/{} (+https://github.com/BotAwesome/velour)", env!("CARGO_PKG_VERSION")))
+        .user_agent(&format!("Velouna/{} (+https://github.com/BotAwesome/velouna)", env!("CARGO_PKG_VERSION")))
         .build()
 }
 

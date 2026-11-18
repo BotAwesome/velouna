@@ -235,7 +235,7 @@ impl App {
             x = lr.right() + 12.0;
         }
         let title = match (self.tab(), &self.lib.loc) {
-            (Tab::Home, _) => "Velour".to_string(),
+            (Tab::Home, _) => "Velouna".to_string(),
             _ => self.lib.title(&self.data),
         };
         // Right actions
@@ -325,7 +325,7 @@ impl App {
             self.dialog = Some(Dialog::Settings);
             ui.close();
         }
-        if widgets::menu_item(ui, &t, ph::INFO, t!("Über Velour"), "", false).clicked() {
+        if widgets::menu_item(ui, &t, ph::INFO, t!("Über Velouna"), "", false).clicked() {
             self.dialog = Some(Dialog::About);
             ui.close();
         }

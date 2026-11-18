@@ -51,13 +51,13 @@ impl Http {
         let agent = ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(6)).timeout_read(Duration::from_secs(25)).build();
         let quick = ureq::AgentBuilder::new().timeout_connect(Duration::from_millis(2500)).timeout(Duration::from_millis(3500)).build();
         let host = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "PC".into());
-        Http { agent, quick, client_id, device_name: format!("Velour ({host})") }
+        Http { agent, quick, client_id, device_name: format!("Velouna ({host})") }
     }
 
     fn prep(&self, r: ureq::Request, token: Option<&str>) -> ureq::Request {
         let mut r = r
             .set("Accept", "application/json")
-            .set("X-Plex-Product", "Velour")
+            .set("X-Plex-Product", "Velouna")
             .set("X-Plex-Version", env!("CARGO_PKG_VERSION"))
             .set("X-Plex-Client-Identifier", &self.client_id)
             .set("X-Plex-Platform", crate::platform::PLEX_PLATFORM)
@@ -92,7 +92,7 @@ impl Http {
 
     pub fn auth_url(&self, code: &str) -> String {
         format!(
-            "https://app.plex.tv/auth#?clientID={}&code={}&context%5Bdevice%5D%5Bproduct%5D=Velour",
+            "https://app.plex.tv/auth#?clientID={}&code={}&context%5Bdevice%5D%5Bproduct%5D=Velouna",
             url_encode(&self.client_id),
             url_encode(code)
         )

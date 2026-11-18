@@ -1,0 +1,12 @@
+[package]
+name = "velouna-android"
+version = "0.1.0"
+edition = "2024"
+description = "Android entry point for Velouna (built with cargo-ndk, packaged by android/app)"
+
+[lib]
+crate-type = ["cdylib"]
+
+[target.'cfg(target_os = "android")'.dependencies]
+velouna = { path = "../.." }
+winit = "0.30"

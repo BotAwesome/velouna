@@ -97,7 +97,26 @@ enum MenuAct {
 }
 
 impl App {
-    fn thumb_for(&mut self, ctx: &egui::Context, path: &str) -> Option<TextureId> {
+    /// Names the queue after the library place it was started from (a
+    /// saved playlist, an album, an artist or genre), or after `kind` for a
+    /// menu "Play" on a playlist.
+    fn origin_from_loc(&mut self, kind: Option<&Kind>) {
+        use crate::ui_queue::{OriginKind, QueueOrigin};
+        let set = |kind: OriginKind, name: &str| QueueOrigin { kind, name: name.to_string(), added: 0 };
+        let o = match (kind, &self.lib.loc) {
+            (Some(Kind::Playlist(i)), _) => self.data.playlists.get(*i).map(|p| set(OriginKind::Playlist, &p.name)),
+            (Some(Kind::File(_)) | None, LibLoc::Playlists(Some(i))) => self.data.playlists.get(*i).map(|p| set(OriginKind::Playlist, &p.name)),
+            (Some(Kind::File(_)) | None, LibLoc::Music(MusicView::Album(a))) => Some(set(OriginKind::Album, a)),
+            (Some(Kind::File(_)) | None, LibLoc::Music(MusicView::Artist(a))) => Some(set(OriginKind::Artist, a)),
+            (Some(Kind::File(_)) | None, LibLoc::Music(MusicView::Genre(a))) => Some(set(OriginKind::Genre, a)),
+            _ => None,
+        };
+        if let Some(o) = o {
+            self.queue_origin = o;
+        }
+    }
+
+    pub(crate) fn thumb_for(&mut self, ctx: &egui::Context, path: &str) -> Option<TextureId> {
         if media::is_url(path) || !self.tools.available() {
             return None;
         }
@@ -697,6 +716,7 @@ impl App {
                         self.play_list(&[f], 0);
                     } else {
                         self.play_list(&files, start);
+                        self.origin_from_loc(None);
                     }
                 } else {
                     self.play_list(&[f], 0);
@@ -818,6 +838,7 @@ impl App {
                 let files: Vec<String> = entries.iter().filter_map(|e| if let Kind::File(f) = &e.kind { Some(f.clone()) } else { None }).collect();
                 if !files.is_empty() {
                     self.play_list(&files, 0);
+                    self.origin_from_loc(None);
                 }
             }
             Click::Menu(act, i) => {
@@ -831,6 +852,7 @@ impl App {
                     MenuAct::Play => {
                         if !files.is_empty() {
                             self.play_list(&files, 0);
+                            self.origin_from_loc(Some(&e.kind));
                         }
                     }
                     MenuAct::PlayNext => self.play_next(&files),
@@ -1140,7 +1162,9 @@ impl App {
             }
             PinTarget::Stream(url) if is_iptv_org(url) => self.lib.go(LibLoc::Tv(None)),
             PinTarget::Stream(url) if crate::radio::is_radio_browser(url) => self.lib.go(LibLoc::Radio(None)),
-            PinTarget::Stream(url) | PinTarget::File(url) => self.play_list(&[url.clone()], 0),
+            PinTarget::Stream(url) | PinTarget::File(url) => {
+                self.play_list(&[url.clone()], 0);
+            }
         }
     }
 
@@ -1532,7 +1556,7 @@ impl App {
                 ui.label(RichText::new(t!("Zugriff auf Videos und Musik")).font(theme::semibold(15.0)).color(t.text));
             });
             ui.add_space(4.0);
-            ui.label(RichText::new(t!("Velour braucht deine Erlaubnis, um die Videos und die Musik auf diesem Gerät anzuzeigen.")).color(t.text_dim));
+            ui.label(RichText::new(t!("Velouna braucht deine Erlaubnis, um die Videos und die Musik auf diesem Gerät anzuzeigen.")).color(t.text_dim));
             ui.add_space(8.0);
             if widgets::accent_button(ui, &t, t!("Zugriff erlauben")).clicked() {
                 crate::pick::request_storage();
@@ -1597,7 +1621,7 @@ impl App {
                     widgets::draw_logo(ui.painter(), r, t.accent);
                 }
                 let size = if touch { 21.0 } else { 24.0 };
-                ui.label(RichText::new(if empty { t!("Willkommen bei Velour") } else { t!("Willkommen zurück") }).font(theme::semibold(size)).color(t.text));
+                ui.label(RichText::new(if empty { t!("Willkommen bei Velouna") } else { t!("Willkommen zurück") }).font(theme::semibold(size)).color(t.text));
             });
             ui.add_space(14.0);
             ui.horizontal_wrapped(|ui| {
@@ -1748,7 +1772,9 @@ impl App {
                     Some(Open::Playlist(i)) => self.lib.go(LibLoc::Playlists(Some(*i))),
                     Some(Open::Stream(url)) if is_iptv_org(url) => self.lib.go(LibLoc::Tv(None)),
                     Some(Open::Stream(url)) if crate::radio::is_radio_browser(url) => self.lib.go(LibLoc::Radio(None)),
-                    Some(Open::Stream(url)) => self.play_list(&[url.clone()], 0),
+                    Some(Open::Stream(url)) => {
+                        self.play_list(&[url.clone()], 0);
+                    }
                     None => {}
                 }
                 ui.add_space(18.0);

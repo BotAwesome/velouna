@@ -1,6 +1,6 @@
 //! Jellyfin and Emby, which share the "MediaBrowser" API.
 //!
-//! Velour's server pages ask for Plex-style paths (`/hubs`, `/library/metadata/1/children`
+//! Velouna's server pages ask for Plex-style paths (`/hubs`, `/library/metadata/1/children`
 //! …). This module answers those paths from a Jellyfin or Emby server and maps
 //! the results onto the Plex model, so all three kinds of server share one UI,
 //! one cache and one player path. Endpoint choices and the differences between
@@ -29,7 +29,7 @@ const IMAGES: &str = "EnableImageTypes=Primary,Backdrop,Thumb&ImageTypeLimit=1&E
 pub fn auth_header(http: &Http, device_id: &str, token: Option<&str>) -> String {
     let f = |k: &str, v: &str| format!("{k}=\"{}\"", url_encode(v));
     let mut parts = vec![
-        f("Client", &format!("Velour {}", crate::platform::PLEX_PLATFORM)),
+        f("Client", &format!("Velouna {}", crate::platform::PLEX_PLATFORM)),
         f("Device", http.device_name()),
         f("DeviceId", device_id),
         f("Version", env!("CARGO_PKG_VERSION")),
@@ -173,7 +173,7 @@ pub fn connect(http: &Http, c: &Conn) -> Result<Vec<Section>, String> {
         };
         let id = s(it, "Id");
         views.insert(id.clone(), ct.clone());
-        out.push(Section { key: id, kind: kind.into(), title: s(it, "Name"), agent: format!("mb:{ct}") });
+        out.push(Section { key: id, kind: kind.into(), title: s(it, "Name"), });
     }
     Ok(out)
 }
@@ -446,7 +446,7 @@ pub fn hubs(http: &Http, c: &Conn, path: &str, sections: &[Section]) -> Result<V
     let push = |out: &mut Vec<Hub>, title: String, identifier: &str, key: String, r: Result<(Vec<Item>, i64), String>, limit: usize| {
         if let Ok((items, total)) = r {
             if !items.is_empty() {
-                out.push(Hub { title, key, identifier: identifier.into(), kind: String::new(), more: total as usize > limit, size: total, items });
+                out.push(Hub { title, key, identifier: identifier.into(), more: total as usize > limit, items });
             }
         }
     };
@@ -533,7 +533,7 @@ fn rows_parallel(rows: Vec<Row>) -> Vec<Hub> {
             .into_iter()
             .filter_map(|(title, identifier, key, limit, h)| {
                 let (items, total) = h.join().ok()?.ok()?;
-                (!items.is_empty()).then(|| Hub { title, key, identifier: identifier.into(), kind: String::new(), more: total as usize > limit, size: total, items })
+                (!items.is_empty()).then(|| Hub { title, key, identifier: identifier.into(), more: total as usize > limit, items })
             })
             .collect()
     })
@@ -609,7 +609,7 @@ pub fn send(http: &Http, c: &Conn, path: &str) -> Result<(), String> {
             let mut body = json!({ "ItemId": key, "PositionTicks": ms * 10_000 });
             if x.emby() {
                 // Emby answers 400 without a play session id.
-                body["PlaySessionId"] = json!(format!("velour-{key}"));
+                body["PlaySessionId"] = json!(format!("velouna-{key}"));
             }
             if state == "stopped" {
                 PLAYING.lock().unwrap().remove(&tag);
@@ -692,23 +692,6 @@ fn ticks_ms(t: i64) -> i64 {
     t / 10_000
 }
 
-/// Seconds since 1970 for `2019-11-28T06:06:41.0000000Z`.
-fn unix(iso: &str) -> i64 {
-    let p = |a: usize, b: usize| iso.get(a..b).and_then(|x| x.parse::<i64>().ok());
-    let (Some(y), Some(m), Some(d)) = (p(0, 4), p(5, 7), p(8, 10)) else { return 0 };
-    let (hh, mm, ss) = (p(11, 13).unwrap_or(0), p(14, 16).unwrap_or(0), p(17, 19).unwrap_or(0));
-    days_from_civil(y, m, d) * 86_400 + hh * 3600 + mm * 60 + ss
-}
-
-fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
-    let y = if m <= 2 { y - 1 } else { y };
-    let era = if y >= 0 { y } else { y - 399 } / 400;
-    let yoe = y - era * 400;
-    let doy = (153 * (m + if m > 2 { -3 } else { 9 }) + 2) / 5 + d - 1;
-    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
-    era * 146_097 + doe - 719_468
-}
-
 fn iso_days_ago(days: i64) -> String {
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let z = now / 86_400 - days + 719_468;
@@ -749,12 +732,10 @@ fn media(v: &Value, id: &str, audio: bool) -> Vec<MediaVersion> {
     let seg = if audio { "Audio" } else { "Videos" };
     let mut out: Vec<MediaVersion> = arr(v, "MediaSources")
         .iter()
-        .enumerate()
-        .map(|(i, m)| {
+        .map(|m| {
             let msid = s(m, "Id");
             let streams = arr(m, "MediaStreams");
             let video = streams.iter().find(|x| s(x, "Type") == "Video");
-            let audio_s = streams.iter().find(|x| s(x, "Type") == "Audio" && b(x, "IsDefault")).or_else(|| streams.iter().find(|x| s(x, "Type") == "Audio"));
             let (w, h) = video.map(|x| (n(x, "Width"), n(x, "Height"))).unwrap_or((0, 0));
             let range = video.map(|x| s(x, "VideoRangeType")).unwrap_or_default();
             let hdr = match range.as_str() {
@@ -780,37 +761,21 @@ fn media(v: &Value, id: &str, audio: bool) -> Vec<MediaVersion> {
                     };
                     Some(StreamInfo {
                         stream_type: st,
-                        codec,
                         language: s(x, "Language"),
                         title: s(x, "Title"),
                         display: s(x, "DisplayTitle"),
-                        channels: n(x, "Channels"),
-                        selected: false,
-                        default: b(x, "IsDefault"),
-                        forced: b(x, "IsForced"),
                         external_key,
                     })
                 })
                 .collect();
-            let container = s(m, "Container");
             MediaVersion {
-                id: i as i64,
                 resolution: resolution(h, w),
                 video_codec: video.map(|x| s(x, "Codec")).unwrap_or_default(),
-                audio_codec: audio_s.map(|x| s(x, "Codec")).unwrap_or_default(),
-                audio_channels: audio_s.map(|x| n(x, "Channels")).unwrap_or(0),
-                container: container.clone(),
-                bitrate: n(m, "Bitrate") / 1000,
-                width: w,
-                height: h,
                 hdr,
                 parts: vec![Part {
-                    id: i as i64,
                     key: format!("/{seg}/{id}/stream?Static=true&MediaSourceId={}", url_encode(&msid)),
                     file: s(m, "Path"),
                     size: n(m, "Size"),
-                    duration_ms: ticks_ms(n(m, "RunTimeTicks")),
-                    container,
                     streams: stream_infos,
                 }],
             }
@@ -819,7 +784,7 @@ fn media(v: &Value, id: &str, audio: bool) -> Vec<MediaVersion> {
     if out.is_empty() {
         // Lists without file details still get a playable stream (the server's default version).
         out.push(MediaVersion {
-            parts: vec![Part { key: format!("/{seg}/{id}/stream?Static=true"), duration_ms: ticks_ms(n(v, "RunTimeTicks")), ..Default::default() }],
+            parts: vec![Part { key: format!("/{seg}/{id}/stream?Static=true"), ..Default::default() }],
             ..Default::default()
         });
     }
@@ -859,14 +824,13 @@ pub fn map(v: &Value) -> Item {
     };
     let first_artist = arr(v, "AlbumArtists").first().cloned().unwrap_or(Value::Null);
     let (mut parent_title, mut parent_key, mut grandparent_title, mut grandparent_key) = (String::new(), String::new(), String::new(), String::new());
-    let (mut thumb, mut art, mut parent_thumb, mut grandparent_thumb, mut grandparent_art) = (primary.clone(), backdrop.clone(), String::new(), String::new(), String::new());
+    let (mut thumb, mut art, mut grandparent_thumb, mut grandparent_art) = (primary.clone(), backdrop.clone(), String::new(), String::new());
     match kind {
         Kind::Episode => {
             parent_title = s(v, "SeasonName");
             parent_key = s(v, "SeasonId");
             grandparent_title = s(v, "SeriesName");
             grandparent_key = s(v, "SeriesId");
-            parent_thumb = parent_primary.clone();
             grandparent_thumb = series_thumb.clone();
             grandparent_art = parent_backdrop.clone();
             if thumb.is_empty() {
@@ -876,7 +840,6 @@ pub fn map(v: &Value) -> Item {
         Kind::Season => {
             parent_title = s(v, "SeriesName");
             parent_key = s(v, "SeriesId");
-            parent_thumb = series_thumb.clone();
             if thumb.is_empty() {
                 thumb = if series_thumb.is_empty() { parent_primary.clone() } else { series_thumb.clone() };
             }
@@ -896,7 +859,6 @@ pub fn map(v: &Value) -> Item {
             parent_key = s(v, "AlbumId");
             grandparent_title = [s(v, "AlbumArtist"), s(&first_artist, "Name")].into_iter().find(|x| !x.is_empty()).unwrap_or_default();
             grandparent_key = s(&first_artist, "Id");
-            parent_thumb = album_thumb.clone();
             if thumb.is_empty() {
                 thumb = album_thumb.clone();
             }
@@ -932,11 +894,8 @@ pub fn map(v: &Value) -> Item {
     }
     Item {
         rating_key: id.clone(),
-        key: id.clone(),
         kind,
-        subtype: String::new(),
         title: s(v, "Name"),
-        title_sort: s(v, "SortName"),
         original_title: s(v, "OriginalTitle"),
         parent_title,
         grandparent_title,
@@ -957,17 +916,11 @@ pub fn map(v: &Value) -> Item {
         child_count: n(v, "ChildCount"),
         thumb,
         art,
-        parent_thumb,
         grandparent_thumb,
         grandparent_art,
         composite: String::new(),
         originally_available: s(v, "PremiereDate").get(..10).unwrap_or("").to_string(),
-        added_at: unix(&s(v, "DateCreated")),
         ratings,
-        audience_rating: v.get("CommunityRating").and_then(|x| x.as_f64()),
-        rating: v.get("CriticRating").and_then(|x| x.as_f64()).map(|r| r / 10.0),
-        audience_rating_image: String::new(),
-        rating_image: String::new(),
         genres: arr(v, "Genres").iter().filter_map(|g| g.as_str().map(String::from)).collect(),
         directors: named("Director"),
         writers: named("Writer"),
@@ -976,9 +929,7 @@ pub fn map(v: &Value) -> Item {
             .filter(|p| matches!(s(p, "Type").as_str(), "Actor" | "GuestStar"))
             .map(|p| Role { name: s(p, "Name"), role: s(p, "Role"), thumb: img(&s(p, "Id"), "Primary", &s(p, "PrimaryImageTag")) })
             .collect(),
-        collections: vec![],
         media: if playable { media(v, &id, kind == Kind::Track) } else { vec![] },
-        smart: false,
         library_section_id: String::new(),
         library_section_title: String::new(),
         on_deck: None,
@@ -1014,26 +965,24 @@ mod tests {
         assert_eq!(q["title"], "Günter X");
         assert_eq!(paging(&q), Some((60, 60)));
         assert_eq!(sort_for("addedAt:desc"), ("DateCreated,SortName", "Descending"));
-        assert_eq!(unix("1970-01-02T00:00:01.0000000Z"), 86_401);
-        assert_eq!(unix("2019-11-28T06:06:41.0000000Z"), 1_574_921_201);
         assert_eq!(iso_days_ago(0).len(), 20);
         assert_eq!(url_decode("a%2"), "a%2");
     }
 
-    /// Against a real server: `VELOUR_MB_URL=… VELOUR_MB_USER=… cargo test live_server -- --ignored --nocapture`
+    /// Against a real server: `VELOUNA_MB_URL=… VELOUNA_MB_USER=… cargo test live_server -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn live_server() {
-        let url = std::env::var("VELOUR_MB_URL").expect("VELOUR_MB_URL");
-        let user = std::env::var("VELOUR_MB_USER").unwrap_or_default();
-        let pw = std::env::var("VELOUR_MB_PASS").unwrap_or_default();
-        let http = Http::new("velour-test".into());
-        let (srv, name) = login(&http, &url, &user, &pw, "velour-test-device").expect("login");
+        let url = std::env::var("VELOUNA_MB_URL").expect("VELOUNA_MB_URL");
+        let user = std::env::var("VELOUNA_MB_USER").unwrap_or_default();
+        let pw = std::env::var("VELOUNA_MB_PASS").unwrap_or_default();
+        let http = Http::new("velouna-test".into());
+        let (srv, name) = login(&http, &url, &user, &pw, "velouna-test-device").expect("login");
         println!("signed in as {name} on {} ({:?})", srv.name, srv.backend);
         let c = Conn { base: srv.connections[0].uri.clone(), token: srv.token, backend: srv.backend, user_id: srv.user_id, device_id: srv.device_id };
         let secs = connect(&http, &c).expect("views");
         for s in &secs {
-            println!("section {} {} {}", s.title, s.kind, s.agent);
+            println!("section {} {}", s.title, s.kind);
         }
         let home = hubs(&http, &c, "/hubs?count=16", &secs).expect("home");
         for h in &home {

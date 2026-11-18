@@ -1,20 +1,20 @@
 [package]
-name = "velour"
-version = "0.2.1"
+name = "velouna"
+version = "0.3.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
-repository = "https://github.com/BotAwesome/velour"
+repository = "https://github.com/BotAwesome/velouna"
 
 [lib]
-name = "velour"
+name = "velouna"
 path = "src/lib.rs"
 
 [[bin]]
-name = "velour"
+name = "velouna"
 path = "src/main.rs"
 
 [workspace]
-members = [".", "i18n-macros", "setup", "android/velour-android"]
+members = [".", "i18n-macros", "setup", "android/velouna-android"]
 # The Android library is built with cargo-ndk (android/build.ps1), not on the host.
 default-members = [".", "i18n-macros", "setup"]
 
@@ -30,9 +30,18 @@ log = "0.4"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.10"
+# Plugin repos: repo.json is signed with Ed25519 (design/plugins.md §8).
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
+base64 = "0.22"
+getrandom = "0.2"
 sys-locale = "0.3"
-velour-i18n-macros = { path = "i18n-macros" }
+velouna-i18n-macros = { path = "i18n-macros" }
 ureq = { version = "2", features = ["json"] }
+# Plugins: Lua 5.4, built from source (same on Windows, Linux and Android).
+rustfft = "6"
+# Plugin packages (.velounaplugin) are zip files.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 arboard = "3"
@@ -54,14 +63,14 @@ keyring = { version = "3", features = ["async-secret-service", "async-io", "cryp
 rfd = { version = "0.15", default-features = false, features = ["xdg-portal", "async-std"] }
 # Keeping the screen awake during playback (portal Inhibit, ScreenSaver).
 zbus = "5"
-# Only to pick X11 over Wayland on request (VELOUR_X11=1); same as eframe's.
+# Only to pick X11 over Wayland on request (VELOUNA_X11=1); same as eframe's.
 winit = { version = "0.30", default-features = false, features = ["x11"] }
 
 [target.'cfg(target_os = "android")'.dependencies]
 android_logger = "0.14"
 eframe = { version = "0.32", default-features = false, features = ["android-native-activity"] }
 jni = "0.21"
-velour-rfd-shim = { path = "android/shims/rfd" }
+velouna-rfd-shim = { path = "android/shims/rfd" }
 winit = "0.30"
 
 [build-dependencies]

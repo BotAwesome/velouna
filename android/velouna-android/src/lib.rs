@@ -1,7 +1,7 @@
-//! NativeActivity entry point: hands the Android app over to Velour.
+//! NativeActivity entry point: hands the Android app over to Velouna.
 
 #[cfg(target_os = "android")]
 #[unsafe(no_mangle)]
 fn android_main(app: winit::platform::android::activity::AndroidApp) {
-    velour::run_android(app);
+    velouna::run_android(app);
 }

@@ -1,10 +1,10 @@
-//! One Velour at a time (setting "Nur ein Velour-Fenster", on by default).
+//! One Velouna at a time (setting "Nur ein Velouna-Fenster", on by default).
 //!
 //! The first process listens on a loopback port derived from the data
-//! folder (so a separate profile, `VELOUR_DATA_DIR`, is a separate Velour).
+//! folder (so a separate profile, `VELOUNA_DATA_DIR`, is a separate Velouna).
 //! A later process hands its files over and quits; the running one opens
 //! them and comes to the front. The handshake carries a random token kept
-//! in the data folder, so only this user's Velour is listened to, and a
+//! in the data folder, so only this user's Velouna is listened to, and a
 //! foreign program that happens to hold the port is simply ignored.
 //!
 //! Explorer and file managers start one process per selected file, all at
@@ -17,7 +17,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
-const MAGIC: &str = "velour-instance-1";
+const MAGIC: &str = "velouna-instance-1";
 /// Files from several processes started together are collected this long.
 const BATCH: Duration = Duration::from_millis(350);
 
@@ -86,19 +86,19 @@ fn absolute(files: &[String]) -> Vec<String> {
 }
 
 pub enum Start {
-    /// The files went to the running Velour: quit.
+    /// The files went to the running Velouna: quit.
     HandedOver,
     /// Open the window; a note for the log, if something was odd.
     Run(Option<String>),
 }
 
 /// At startup, before the window opens and before the log file is created
-/// (it would empty the running Velour's log).
+/// (it would empty the running Velouna's log).
 pub fn hand_over_or_listen(files: &[String]) -> Start {
     if !enabled() || listen() {
         return Start::Run(None);
     }
-    // The port is taken: by our running Velour (hand over) or by some other
+    // The port is taken: by our running Velouna (hand over) or by some other
     // program (then just run normally).
     match hand_over(&absolute(files)) {
         Ok(()) => Start::HandedOver,
@@ -120,7 +120,7 @@ pub fn listen() -> bool {
         return false;
     }
     *on = true;
-    let _ = std::thread::Builder::new().name("velour-instance".into()).spawn(move || {
+    let _ = std::thread::Builder::new().name("velouna-instance".into()).spawn(move || {
         for conn in listener.incoming().flatten() {
             if let Err(e) = receive(conn, &token) {
                 log::warn!("single instance: {e}");
@@ -157,7 +157,7 @@ fn receive(conn: TcpStream, token: &str) -> Result<(), String> {
 }
 
 fn hand_over(files: &[String]) -> Result<(), String> {
-    // Windows only lets the running Velour come to the front if the process
+    // Windows only lets the running Velouna come to the front if the process
     // the user just started allows it.
     #[cfg(windows)]
     {
@@ -169,7 +169,7 @@ fn hand_over(files: &[String]) -> Result<(), String> {
         unsafe { AllowSetForegroundWindow(ASFW_ANY) };
     }
     let payload = serde_json::to_string(files).map_err(|e| e.to_string())?;
-    // The running Velour may have bound the port a moment ago and not yet
+    // The running Velouna may have bound the port a moment ago and not yet
     // written its token: retry briefly.
     let deadline = Instant::now() + Duration::from_secs(3);
     loop {
@@ -185,7 +185,7 @@ fn hand_over(files: &[String]) -> Result<(), String> {
         match r {
             Ok(reply) if reply == "ok" => return Ok(()),
             Ok(reply) if reply == "token" && Instant::now() < deadline => {}
-            Ok(reply) => return Err(format!("no Velour on the port (reply {reply:?})")),
+            Ok(reply) => return Err(format!("no Velouna on the port (reply {reply:?})")),
             Err(e) if Instant::now() >= deadline => return Err(e),
             Err(_) => {}
         }

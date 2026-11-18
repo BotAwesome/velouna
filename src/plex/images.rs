@@ -80,7 +80,7 @@ impl Images {
         let agent = ureq::AgentBuilder::new()
             .timeout_connect(std::time::Duration::from_secs(8))
             .timeout_read(std::time::Duration::from_secs(20))
-            .user_agent(&format!("Velour/{}", env!("CARGO_PKG_VERSION")))
+            .user_agent(&format!("Velouna/{}", env!("CARGO_PKG_VERSION")))
             .build();
         let fetch: Fetch = Arc::new(move |u: &str| {
             let r = agent.get(u).call().map_err(|e| e.to_string())?;
@@ -197,10 +197,6 @@ impl Images {
         }
     }
 
-    pub fn failed(&self, key: &str) -> bool {
-        matches!(self.entries.get(key), Some(Img::Failed))
-    }
-
     pub fn clear(&mut self) {
         self.entries.clear();
         self.queue.0.lock().unwrap().clear();
@@ -210,7 +206,10 @@ impl Images {
 fn load(src: &Source, job: &Job) -> Option<(usize, usize, Vec<u8>)> {
     let path = disk_path(&src.dir, &job.key);
     let bytes = match std::fs::read(&path) {
-        Ok(b) if !b.is_empty() => b,
+        Ok(b) if !b.is_empty() => {
+            crate::cache::touch(&path);
+            b
+        }
         _ => {
             let b = (src.fetch)(&job.url).ok()?;
             let tmp = path.with_extension("tmp");

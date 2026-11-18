@@ -8,7 +8,7 @@ use crate::theme;
 use crate::widgets::{self, icon_button, setting_row};
 use eframe::egui::{self, Align, Align2, Color32, CornerRadius, FontId, Id, Layout, Rect, RichText, Sense, Stroke, StrokeKind, Ui, pos2, vec2};
 use egui_phosphor::regular as ph;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 #[derive(Clone)]
 pub struct LibDrag(pub Vec<String>);
@@ -94,6 +94,9 @@ pub fn show_in_explorer(path: &str) {
             }
         }
     }
+    // Android has no file manager to point at.
+    #[cfg(target_os = "android")]
+    let _ = path;
 }
 
 impl App {
@@ -539,7 +542,7 @@ impl App {
                 let col = w / n;
                 ui.horizontal(|ui| {
                     ui.spacing_mut().item_spacing.x = 0.0;
-                    let mut col_ui = |ui: &mut Ui, v: &mut f64, label: &str| -> bool {
+                    let col_ui = |ui: &mut Ui, v: &mut f64, label: &str| -> bool {
                         let mut ch = false;
                         ui.allocate_ui_with_layout(vec2(col, 170.0), Layout::top_down(Align::Center), |ui| {
                             ch = widgets::vslider(ui, &t, v, -12.0, 12.0, 130.0).changed();
@@ -962,7 +965,9 @@ impl App {
             // Touch: a swipe on a row scrolls the list; rows move only by
             // their grip on the right, a tap plays, a long press opens the menu.
             let touch = crate::mobile::touch();
-            let row_h = if touch { 48.0 } else { 40.0 };
+            let look = self.queue_look(&st.playlist);
+            let row_h = look.row_h();
+            let ctx = ui.ctx().clone();
             egui::ScrollArea::vertical().auto_shrink([false, false]).show_rows(ui, row_h, n, |ui, range| {
                 ui.spacing_mut().item_spacing.y = 0.0;
                 for i in range {
@@ -980,28 +985,10 @@ impl App {
                     } else if resp.hovered() {
                         painter.rect_filled(rect, CornerRadius::same(theme::R), t.hover);
                     }
-                    if current {
-                        let icon = if st.paused { ph::PAUSE } else { ph::PLAY };
-                        painter.text(pos2(rect.left() + 16.0, rect.center().y), Align2::CENTER_CENTER, icon, theme::fill_icon(13.0), t.accent);
-                    } else {
-                        painter.text(pos2(rect.left() + 16.0, rect.center().y), Align2::CENTER_CENTER, format!("{}", i + 1), FontId::proportional(11.5), t.text_faint);
-                    }
-                    let dur = self
-                        .tools
-                        .probe_cache
-                        .get(&e.filename)
-                        .map(|p| p.duration)
-                        .or_else(|| crate::plex::remote(&e.filename).map(|r| r.duration))
-                        .unwrap_or(0.0);
+                    let info = self.row_info(&ctx, e, true);
+                    let dur = info.dur;
                     let right_w = if touch { 96.0 } else if resp.hovered() { 34.0 } else { 52.0 };
-                    widgets::painter_text_trunc(
-                        painter,
-                        pos2(rect.left() + 34.0, rect.center().y - 9.0),
-                        &e.display(),
-                        FontId::proportional(13.0),
-                        if current { t.accent } else { t.text },
-                        w - 34.0 - right_w - 6.0,
-                    );
+                    crate::ui_queue::paint_row(ui.painter(), &t, rect, &info, look, i, current, st.paused, right_w);
                     if let Some((gr, g)) = &grip {
                         let active = g.dragged() || g.hovered();
                         ui.painter().text(gr.center(), Align2::CENTER_CENTER, ph::DOTS_SIX_VERTICAL, theme::icon(18.0), if active { t.accent } else { t.text_faint });

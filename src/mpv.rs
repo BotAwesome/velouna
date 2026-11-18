@@ -1,7 +1,7 @@
 //! Minimal, dynamically loaded binding to libmpv (client + render API).
 //!
 //! The DLL is loaded at runtime with `libloading`, so no import library is
-//! needed at build time. Search order: `VELOUR_LIBMPV` env var, next to the
+//! needed at build time. Search order: `VELOUNA_LIBMPV` env var, next to the
 //! executable, `./lib`, the working directory, then the system search path.
 
 #![allow(non_camel_case_types, dead_code)]
@@ -32,8 +32,8 @@ pub mod timing {
         playing: Option<u128>,
     }
     static LOAD: Mutex<Option<Load>> = Mutex::new(None);
-    /// Only for measuring during development: VELOUR_TIMING=1.
-    static ENABLED: LazyLock<bool> = LazyLock::new(|| std::env::var_os("VELOUR_TIMING").is_some_and(|v| v != "0"));
+    /// Only for measuring during development: VELOUNA_TIMING=1.
+    static ENABLED: LazyLock<bool> = LazyLock::new(|| std::env::var_os("VELOUNA_TIMING").is_some_and(|v| v != "0"));
     static SEEN_FIRST: Mutex<bool> = Mutex::new(false);
 
     /// Call as early as possible in `main`.
@@ -260,7 +260,7 @@ fn candidate_paths() -> Vec<PathBuf> {
     #[cfg(not(any(target_os = "android", target_os = "linux")))]
     let names = ["libmpv-2.dll", "mpv-2.dll", "mpv-1.dll"];
     let mut dirs: Vec<PathBuf> = Vec::new();
-    if let Ok(p) = std::env::var("VELOUR_LIBMPV").or_else(|_| std::env::var("VLB_LIBMPV")) {
+    if let Ok(p) = std::env::var("VELOUNA_LIBMPV").or_else(|_| std::env::var("VLB_LIBMPV")) {
         let p = PathBuf::from(p);
         if p.is_file() {
             return vec![p];
@@ -308,6 +308,23 @@ macro_rules! sym {
 }
 
 impl Api {
+    /// libmpv, loaded once per process (the player and the headless
+    /// decoder of the song analysis share it).
+    pub fn shared() -> Result<&'static Api, String> {
+        static API: std::sync::OnceLock<&'static Api> = std::sync::OnceLock::new();
+        static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        if let Some(a) = API.get() {
+            return Ok(a);
+        }
+        let _g = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(a) = API.get() {
+            return Ok(a);
+        }
+        let a: &'static Api = Box::leak(Box::new(Api::load()?));
+        let _ = API.set(a);
+        Ok(a)
+    }
+
     pub fn load() -> Result<Api, String> {
         let mut last_err = String::from(t!("libmpv-2.dll nicht gefunden"));
         // A libmpv file that exists but does not load (missing library,
@@ -548,15 +565,15 @@ fn c(s: &str) -> CString {
 impl Mpv {
     /// Creates (but does not initialize) an mpv instance.
     pub fn create() -> Result<Mpv, String> {
-        let api: &'static Api = Box::leak(Box::new(Api::load()?));
+        let api = Api::shared()?;
         let handle = unsafe { (api.create)() };
         if handle.is_null() {
             return Err(t!("mpv_create() fehlgeschlagen").into());
         }
-        // mpv's own warnings and errors end up in Velour's log
-        // (VELOUR_MPV_LOG=v for more).
+        // mpv's own warnings and errors end up in Velouna's log
+        // (VELOUNA_MPV_LOG=v for more).
         if let Some(req) = api.request_log_messages {
-            let level = std::env::var("VELOUR_MPV_LOG").unwrap_or_else(|_| "warn".into());
+            let level = std::env::var("VELOUNA_MPV_LOG").unwrap_or_else(|_| "warn".into());
             let level = c(&level);
             unsafe { req(handle, level.as_ptr()) };
         }
@@ -593,6 +610,13 @@ impl Mpv {
 
     pub fn command(&self, args: &[&str]) -> Result<(), String> {
         note_load(args);
+        let mut a = argv(args);
+        let r = unsafe { (self.api.command)(self.handle, a.ptrs.as_mut_ptr()) };
+        self.check(r)
+    }
+
+    /// Like `command`, but never counted as a file the user opened (timing).
+    pub fn command_untimed(&self, args: &[&str]) -> Result<(), String> {
         let mut a = argv(args);
         let r = unsafe { (self.api.command)(self.handle, a.ptrs.as_mut_ptr()) };
         self.check(r)
@@ -677,7 +701,12 @@ impl Mpv {
 
     /// Non-blocking poll for the next event.
     pub fn poll_event(&self) -> Option<Event> {
-        let ev = unsafe { &*(self.api.wait_event)(self.handle, 0.0) };
+        self.wait_event(0.0)
+    }
+
+    /// Next event, waiting up to `timeout` seconds for one.
+    pub fn wait_event(&self, timeout: f64) -> Option<Event> {
+        let ev = unsafe { &*(self.api.wait_event)(self.handle, timeout) };
         let e = match ev.event_id {
             0 => return None,
             1 => Event::Shutdown,

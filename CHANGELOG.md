@@ -1,7 +1,45 @@
 # Changelog
 
-All notable changes to Velour. The newest version is at the top; each
+All notable changes to Velouna (called Velour up to 0.2.1). The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
+
+## [0.3.0] - 2026-11-18
+
+### Velour is now Velouna
+- New name, same player: other players were already called Velour. Settings, library and
+  history move over by themselves on Windows and Linux, and the update from Velour installs
+  Velouna in its place
+- Android: Velouna is a new app next to the old one (app.velouna). Uninstall Velour once
+  Velouna is set up
+- The project lives at github.com/BotAwesome/velouna now. Old links lead there
+
+### Music you can see
+- Visualizers: pictures that follow the song. Velouna analyses each song once (beats, kicks,
+  snares, build-ups and drops) and the picture reacts to them, also after seeking
+- The Velounizer comes with three presets: Ink, a slowly running fluid of colour; Aurora;
+  and Contour. Each with palettes, a seed and its own sliders
+- The visualizer button in the player bar switches it on and off; its arrow picks the
+  preset, palette and settings
+- Songs without a visualizer get a now-playing page: cover, title, the queue of the album
+  or folder, and details when there is room
+
+### Plugins
+- Settings → Extensions: install, switch on and off, update and remove plugins
+- Catalog: plugins from repos, with the official Velouna repo already added. Tick what you
+  want and install it in one go
+- Repos: add anyone's repo by its link, or just one plugin of it by linking its folder.
+  The Repos tab shows which updates are waiting
+- Every repo is signed. Velouna remembers its key and blocks updates if it ever changes,
+  with a clear warning and a 30-second wait before a new key can be accepted
+- Own repo: pack your plugin folders into a signed repo, ready to put on GitHub
+- Write your own visualizer with a GLSL shader and, if you like, a small Lua script. Reload
+  picks up changed files right away. Docs and examples:
+  https://github.com/BotAwesome/velouna-plugins
+
+### Smaller things
+- The cache (thumbnails, song analyses, artwork) stays below a size you choose in
+  Settings → Privacy, 1 GB by default. The longest unused files go first
+- mpv's own warnings and errors are written to Velouna's log
 
 ## [0.2.1] - 2026-11-17
 

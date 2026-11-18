@@ -1,8 +1,8 @@
 [package]
-name = "velour-i18n-macros"
+name = "velouna-i18n-macros"
 version = "0.1.0"
 edition = "2024"
-description = "Compile-time checked German/English UI strings for Velour"
+description = "Compile-time checked German/English UI strings for Velouna"
 
 [lib]
 proc-macro = true

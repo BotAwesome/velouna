@@ -1,4 +1,4 @@
-//! Android stand-in for the subset of `rfd::FileDialog` Velour uses.
+//! Android stand-in for the subset of `rfd::FileDialog` Velouna uses.
 //! Every dialog reports "cancelled" for now; a Storage Access Framework
 //! picker replaces this later.
 

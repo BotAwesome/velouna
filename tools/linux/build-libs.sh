@@ -1,5 +1,5 @@
 #!/bin/bash
-# Builds the bundled Linux runtime of Velour inside an Ubuntu 22.04 container
+# Builds the bundled Linux runtime of Velouna inside an Ubuntu 22.04 container
 # (glibc 2.35: Pop!_OS 22.04 and newer):
 #   lib/libmpv.so.2 + the libraries it needs that a desktop may lack,
 #   ffmpeg, ffprobe (static), yt-dlp (standalone).

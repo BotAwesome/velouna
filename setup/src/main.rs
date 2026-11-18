@@ -1,10 +1,10 @@
-//! Velour Setup: a small installer/uninstaller in the app's own look.
+//! Velouna Setup: a small installer/uninstaller in the app's own look.
 //!
 //! The same exe is both: with an attached payload (see `payload.rs`) it
 //! installs; the bare stub copied to `uninstall.exe` uninstalls.
 //!
 //! Flags: `--quiet` (no window; install with defaults / uninstall keeping data),
-//! `--relaunch` (with `--quiet`, from Velour's updater: wait for Velour to
+//! `--relaunch` (with `--quiet`, from Velouna's updater: wait for Velouna to
 //! quit, then start it again).
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
@@ -78,7 +78,7 @@ struct Setup {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let quiet = args.iter().any(|a| a == "--quiet" || a.eq_ignore_ascii_case("/S"));
-    // In-app update: wait for Velour to quit, start it again afterwards.
+    // In-app update: wait for Velouna to quit, start it again afterwards.
     let relaunch = args.iter().any(|a| a == "--relaunch");
     let arg_dir = args.iter().position(|a| a == "--uninstall-dir").and_then(|i| args.get(i + 1)).map(PathBuf::from);
     let exe = std::env::current_exe().expect("current exe");
@@ -86,7 +86,8 @@ fn main() {
 
     let (mode, dir) = match footer {
         Some(footer) => {
-            let existing = install::existing().filter(|e| e.dir.is_dir());
+            // An install under the earlier name Velour counts as an update.
+            let existing = install::existing().filter(|e| e.dir.is_dir()).or_else(install::legacy_existing);
             let dir = existing.as_ref().map(|e| e.dir.clone()).unwrap_or_else(install::default_dir);
             (Mode::Install { exe, footer, existing }, dir)
         }
@@ -96,7 +97,7 @@ fn main() {
                 // Started as <install dir>\uninstall.exe: continue from a temp copy.
                 let dir = exe.parent().map(|p| p.to_path_buf()).unwrap_or_default();
                 if let Err(e) = install::relaunch_from_temp(&dir, quiet) {
-                    rfd::MessageDialog::new().set_title("Velour").set_description(e.to_string()).show();
+                    rfd::MessageDialog::new().set_title("Velouna").set_description(e.to_string()).show();
                 }
                 return;
             }
@@ -109,16 +110,16 @@ fn main() {
             Mode::Install { exe, footer, existing } => {
                 let opts = existing.as_ref().map(|e| e.options).unwrap_or(Options { desktop: false, open_with: true });
                 if relaunch {
-                    // Started by Velour's updater, which quits right after:
+                    // Started by Velouna's updater, which quits right after:
                     // give it time to save and exit on its own.
                     for _ in 0..50 {
-                        if !install::app_running(&dir) {
+                        if !install::app_running(&dir) && !install::legacy_running() {
                             break;
                         }
                         std::thread::sleep(std::time::Duration::from_millis(200));
                     }
                 }
-                if install::app_running(&dir) {
+                if install::app_running(&dir) || install::legacy_running() {
                     install::close_app();
                 }
                 let ok = install::install(exe, footer, &dir, opts, progress).is_ok();
@@ -145,8 +146,8 @@ fn main() {
     };
     let icon = egui::IconData { rgba: logo::logo_rasterize(64), width: 64, height: 64 };
     let title = match mode {
-        Mode::Install { .. } => tx("Velour installieren", "Install Velour"),
-        Mode::Uninstall => tx("Velour deinstallieren", "Uninstall Velour"),
+        Mode::Install { .. } => tx("Velouna installieren", "Install Velouna"),
+        Mode::Uninstall => tx("Velouna deinstallieren", "Uninstall Velouna"),
     };
     let options = eframe::NativeOptions {
         renderer: eframe::Renderer::Glow,
@@ -304,7 +305,7 @@ impl Setup {
         let tex = self.logo.get_or_insert_with(|| {
             let n = 256;
             let img = ColorImage::from_rgba_unmultiplied([n, n], &logo::logo_mask(n));
-            ui.ctx().load_texture("velour-logo", img, TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)))
+            ui.ctx().load_texture("velouna-logo", img, TextureOptions::LINEAR.with_mipmap_mode(Some(egui::TextureFilter::Linear)))
         });
         let c = pos2(r.center().x, r.top() + r.height() * 0.40);
         let size = 116.0;
@@ -322,7 +323,7 @@ impl Setup {
         }
         p.add(egui::Shape::mesh(glow));
         p.image(tex.id(), logo_rect, Rect::from_min_max(Pos2::ZERO, pos2(1.0, 1.0)), ACCENT);
-        p.text(pos2(c.x, logo_rect.bottom() + 30.0), Align2::CENTER_CENTER, "Velour", sb(30.0), Color32::WHITE);
+        p.text(pos2(c.x, logo_rect.bottom() + 30.0), Align2::CENTER_CENTER, "Velouna", sb(30.0), Color32::WHITE);
         let v = self.version.clone();
         if !v.is_empty() {
             p.text(pos2(c.x, logo_rect.bottom() + 58.0), Align2::CENTER_CENTER, format!("Version {v}"), FontId::proportional(12.5), Color32::from_white_alpha(120));
@@ -390,8 +391,16 @@ impl Setup {
     fn page_options(&mut self, ui: &mut Ui, body: Rect, footer: Rect) {
         let Mode::Install { footer: pack, existing, .. } = &self.mode else { return };
         let (title, text) = match existing {
+            Some(e) if e.legacy => (
+                tx("Aus Velour wird Velouna", "Velour becomes Velouna"),
+                if en() {
+                    format!("Velour {} is replaced by Velouna {}. Same player, new name: settings, library and Plex sign-in come along.", e.version, pack.version)
+                } else {
+                    format!("Velour {} wird durch Velouna {} ersetzt. Gleicher Player, neuer Name: Einstellungen, Bibliothek und Plex-Anmeldung kommen mit.", e.version, pack.version)
+                },
+            ),
             Some(e) if e.version != pack.version => (
-                tx("Velour aktualisieren", "Update Velour"),
+                tx("Velouna aktualisieren", "Update Velouna"),
                 if en() {
                     format!("Version {} → {}. Your settings, library and Plex sign-in stay as they are.", e.version, pack.version)
                 } else {
@@ -399,11 +408,11 @@ impl Setup {
                 },
             ),
             Some(_) => (
-                tx("Velour reparieren", "Repair Velour"),
+                tx("Velouna reparieren", "Repair Velouna"),
                 tx("Diese Version ist bereits installiert. Die Programmdateien werden neu geschrieben, deine Daten bleiben erhalten.", "This version is already installed. The program files are written again, your data stays as it is.").to_string(),
             ),
             None => (
-                tx("Velour installieren", "Install Velour"),
+                tx("Velouna installieren", "Install Velouna"),
                 tx(
                     "Video- und Audioplayer mit Bibliothek, Untertitel-Werkzeugen und Plex. Wiedergabe-Engine und FFmpeg sind enthalten.",
                     "Video and audio player with library, subtitle tools and Plex. Playback engine and FFmpeg are included.",
@@ -431,8 +440,8 @@ impl Setup {
             if button(ui, b, tx("Ändern…", "Change…"), Kind::Ghost).clicked() {
                 let start = self.dir.parent().map(|p| p.to_path_buf()).unwrap_or_default();
                 if let Some(mut d) = rfd::FileDialog::new().set_directory(start).set_title(tx("Speicherort wählen", "Choose location")).pick_folder() {
-                    if d.file_name().is_none_or(|n| !n.eq_ignore_ascii_case("Velour")) {
-                        d = d.join("Velour");
+                    if d.file_name().is_none_or(|n| !n.eq_ignore_ascii_case("Velouna")) {
+                        d = d.join("Velouna");
                     }
                     self.dir = d;
                 }
@@ -447,7 +456,7 @@ impl Setup {
             body.width(),
             &mut self.opts.desktop,
             tx("Verknüpfung auf dem Desktop", "Desktop shortcut"),
-            tx("Im Startmenü ist Velour immer zu finden.", "Velour is always in the Start menu."),
+            tx("Im Startmenü ist Velouna immer zu finden.", "Velouna is always in the Start menu."),
         );
         toggle_row(
             ui,
@@ -456,8 +465,8 @@ impl Setup {
             &mut self.opts.open_with,
             tx("Bei „Öffnen mit“ anbieten", "Offer in “Open with”"),
             tx(
-                "Für Videos, Musik, Playlists und Ordner. Velour wird nicht ungefragt zur Standard-App.",
-                "For videos, music, playlists and folders. Velour never makes itself the default app.",
+                "Für Videos, Musik, Playlists und Ordner. Velouna wird nicht ungefragt zur Standard-App.",
+                "For videos, music, playlists and folders. Velouna never makes itself the default app.",
             ),
         );
 
@@ -484,11 +493,11 @@ impl Setup {
 
     fn page_uninstall(&mut self, ui: &mut Ui, body: Rect, footer: Rect) {
         let text = if en() {
-            format!("Removes Velour from {}. Your media files are never touched; you decide about your settings at the end.", self.dir.display())
+            format!("Removes Velouna from {}. Your media files are never touched; you decide about your settings at the end.", self.dir.display())
         } else {
-            format!("Entfernt Velour aus {}. Deine Mediendateien bleiben unberührt; über deine Einstellungen entscheidest du am Ende.", self.dir.display())
+            format!("Entfernt Velouna aus {}. Deine Mediendateien bleiben unberührt; über deine Einstellungen entscheidest du am Ende.", self.dir.display())
         };
-        Self::heading(ui, body, tx("Velour deinstallieren", "Uninstall Velour"), &text);
+        Self::heading(ui, body, tx("Velouna deinstallieren", "Uninstall Velouna"), &text);
         let (cancel, go) = footer_buttons(footer, 110.0, 160.0);
         if button(ui, cancel, tx("Abbrechen", "Cancel"), Kind::Ghost).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
@@ -500,7 +509,7 @@ impl Setup {
 
     fn page_working(&mut self, ui: &mut Ui, body: Rect) {
         let uninstall = matches!(self.mode, Mode::Uninstall);
-        let title = if uninstall { tx("Velour wird entfernt…", "Removing Velour…") } else { tx("Velour wird installiert…", "Installing Velour…") };
+        let title = if uninstall { tx("Velouna wird entfernt…", "Removing Velouna…") } else { tx("Velouna wird installiert…", "Installing Velouna…") };
         Self::heading(ui, body, title, tx("Das dauert nur einen Moment.", "This only takes a moment."));
         let total = self.progress.total.load(Ordering::Relaxed).max(1) as f32;
         let done = self.progress.done.load(Ordering::Relaxed) as f32;
@@ -530,7 +539,7 @@ impl Setup {
                     ui,
                     r,
                     tx("Alles entfernt", "Everything removed"),
-                    tx("Velour und deine Daten wurden gelöscht. Deine Mediendateien sind unberührt.", "Velour and your data were deleted. Your media files are untouched."),
+                    tx("Velouna und deine Daten wurden gelöscht. Deine Mediendateien sind unberührt.", "Velouna and your data were deleted. Your media files are untouched."),
                 );
                 let (_, close) = footer_buttons(footer, 0.0, 130.0);
                 if button(ui, close, tx("Schließen", "Close"), Kind::Accent).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -541,10 +550,10 @@ impl Setup {
             Self::heading(
                 ui,
                 r,
-                tx("Velour wurde entfernt", "Velour has been removed"),
+                tx("Velouna wurde entfernt", "Velouna has been removed"),
                 tx(
-                    "Möchtest du deine Einstellungen behalten? Dazu gehören Bibliothek, Verlauf, Presets, Vorschaubilder und die Plex-Anmeldung. Installierst du Velour später wieder, ist alles wie vorher.",
-                    "Do you want to keep your settings? That includes library, history, presets, thumbnails and the Plex sign-in. If you install Velour again later, everything is as before.",
+                    "Möchtest du deine Einstellungen behalten? Dazu gehören Bibliothek, Verlauf, Presets, Vorschaubilder und die Plex-Anmeldung. Installierst du Velouna später wieder, ist alles wie vorher.",
+                    "Do you want to keep your settings? That includes library, history, presets, thumbnails and the Plex sign-in. If you install Velouna again later, everything is as before.",
                 ),
             );
             let (delete, keep) = footer_buttons(footer, 150.0, 130.0);
@@ -560,14 +569,14 @@ impl Setup {
         Self::heading(
             ui,
             r,
-            tx("Velour ist bereit", "Velour is ready"),
-            tx("Du findest Velour ab jetzt im Startmenü. Viel Spaß beim Schauen!", "You'll find Velour in the Start menu from now on. Enjoy watching!"),
+            tx("Velouna ist bereit", "Velouna is ready"),
+            tx("Du findest Velouna ab jetzt im Startmenü. Viel Spaß beim Schauen!", "You'll find Velouna in the Start menu from now on. Enjoy watching!"),
         );
         let (close, launch) = footer_buttons(footer, 110.0, 160.0);
         if button(ui, close, tx("Schließen", "Close"), Kind::Ghost).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
-        if button(ui, launch, tx("Velour starten", "Launch Velour"), Kind::Accent).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+        if button(ui, launch, tx("Velouna starten", "Launch Velouna"), Kind::Accent).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let _ = std::process::Command::new(self.dir.join(install::APP_EXE)).current_dir(&self.dir).spawn();
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }
@@ -578,18 +587,18 @@ impl Setup {
         Self::heading(
             ui,
             body,
-            tx("Velour läuft noch", "Velour is still running"),
+            tx("Velouna läuft noch", "Velouna is still running"),
             if uninstall {
-                tx("Schließe Velour, damit es entfernt werden kann.", "Close Velour so it can be removed.")
+                tx("Schließe Velouna, damit es entfernt werden kann.", "Close Velouna so it can be removed.")
             } else {
-                tx("Schließe Velour, damit es aktualisiert werden kann. Eine laufende Wiedergabe wird beendet.", "Close Velour so it can be updated. Playback in progress will stop.")
+                tx("Schließe Velouna, damit es aktualisiert werden kann. Eine laufende Wiedergabe wird beendet.", "Close Velouna so it can be updated. Playback in progress will stop.")
             },
         );
         let (retry, close) = footer_buttons(footer, 140.0, 160.0);
         if button(ui, retry, tx("Erneut prüfen", "Check again"), Kind::Ghost).clicked() {
             self.start(ui.ctx());
         }
-        if button(ui, close, tx("Velour beenden", "Close Velour"), Kind::Accent).clicked() {
+        if button(ui, close, tx("Velouna beenden", "Close Velouna"), Kind::Accent).clicked() {
             install::close_app();
             self.start(ui.ctx());
         }
@@ -612,7 +621,8 @@ impl Setup {
     }
 
     fn start(&mut self, ctx: &egui::Context) {
-        if install::app_running(&self.dir) {
+        let installing = matches!(self.mode, Mode::Install { .. });
+        if install::app_running(&self.dir) || (installing && install::legacy_running()) {
             self.page = Page::Running;
             return;
         }
@@ -698,7 +708,7 @@ fn toggle_row(ui: &mut Ui, at: Pos2, width: f32, on: &mut bool, title: &str, hin
     row.bottom()
 }
 
-/// Shortens a long path in the middle: C:\Users\…\Programs\Velour
+/// Shortens a long path in the middle: C:\Users\…\Programs\Velouna
 fn elide_middle(ui: &Ui, s: &str, font: FontId, max: f32) -> String {
     let fits = |t: &str| ui.painter().layout_no_wrap(t.to_string(), font.clone(), TEXT).size().x <= max;
     if fits(s) {

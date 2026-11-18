@@ -1,4 +1,4 @@
-//! Plex views in Velour's design language: server overview, library browser
+//! Plex views in Velouna's design language: server overview, library browser
 //! (recommended / library / collections / playlists), detail pages and the
 //! sign-in flow. Data comes from `crate::plex`; everything here is drawing and
 //! turning clicks into navigation or playback.
@@ -510,7 +510,20 @@ impl App {
             let Some(url) = self.plex.stream_url(&part.key) else { continue };
             plex::register(
                 &url,
-                plex::Remote { rating_key: it.rating_key.clone(), title: it.play_title(), duration: it.duration(), conn: conn.clone(), kind: it.kind },
+                plex::Remote {
+                    rating_key: it.rating_key.clone(),
+                    title: it.play_title(),
+                    duration: it.duration(),
+                    conn: conn.clone(),
+                    kind: it.kind,
+                    name: it.title.clone(),
+                    sub: match it.kind {
+                        plex::model::Kind::Track | plex::model::Kind::Episode => it.grandparent_title.clone(),
+                        _ => it.year.map(|y| y.to_string()).unwrap_or_default(),
+                    },
+                    album: if it.kind == plex::model::Kind::Track { it.parent_title.clone() } else { String::new() },
+                    thumb: if it.kind == plex::model::Kind::Track { it.thumb.clone() } else { it.still().to_string() },
+                },
             );
             let mut opts = format!("force-media-title={},http-header-fields={}", q(&it.play_title()), q(&headers));
             if n == 0 && req.mode == PlayMode::Play {
@@ -533,6 +546,16 @@ impl App {
                 }
             }
             entries.push((url, opts));
+        }
+        match req.mode {
+            PlayMode::Play => {
+                let album = list.first().filter(|f| f.kind == plex::model::Kind::Track && !f.parent_title.is_empty()).map(|f| f.parent_title.clone());
+                self.queue_origin = match album.filter(|a| list.len() > 1 && list.iter().all(|i| &i.parent_title == a)) {
+                    Some(a) => crate::ui_queue::QueueOrigin { kind: crate::ui_queue::OriginKind::Album, name: a, added: 0 },
+                    None => Default::default(),
+                };
+            }
+            _ => self.queue_origin.added += entries.len(),
         }
         let Some(p) = &self.player else { return true };
         match req.mode {
@@ -980,9 +1003,9 @@ impl App {
                     Status::SignedOut => {
                         ui.label(RichText::new(t!("Plex verbinden")).font(theme::semibold(22.0)).color(t.text));
                         ui.add_space(6.0);
-                        ui.label(RichText::new(t!("Durchstöbere deine Plex-Mediatheken direkt in Velour – mit Sammlungen, Serien, Fortschritt und allem, was Velour beim Abspielen kann.")).color(t.text_dim));
+                        ui.label(RichText::new(t!("Durchstöbere deine Plex-Mediatheken direkt in Velouna – mit Sammlungen, Serien, Fortschritt und allem, was Velouna beim Abspielen kann.")).color(t.text_dim));
                         ui.add_space(4.0);
-                        ui.label(RichText::new(t!("Die Anmeldung läuft über plex.tv in deinem Browser. Velour sieht dein Passwort nie.")).size(12.5).color(t.text_faint));
+                        ui.label(RichText::new(t!("Die Anmeldung läuft über plex.tv in deinem Browser. Velouna sieht dein Passwort nie.")).size(12.5).color(t.text_faint));
                         ui.add_space(18.0);
                         ui.horizontal(|ui| {
                             if widgets::accent_button(ui, &t, t!("Mit Plex anmelden")).clicked() {
@@ -1000,7 +1023,7 @@ impl App {
                     Status::Pin { url, .. } => {
                         ui.label(RichText::new(t!("Im Browser bestätigen")).font(theme::semibold(22.0)).color(t.text));
                         ui.add_space(6.0);
-                        ui.label(RichText::new(t!("In deinem Browser hat sich plex.tv geöffnet. Melde dich dort an – Velour verbindet sich danach automatisch.")).color(t.text_dim));
+                        ui.label(RichText::new(t!("In deinem Browser hat sich plex.tv geöffnet. Melde dich dort an – Velouna verbindet sich danach automatisch.")).color(t.text_dim));
                         ui.add_space(16.0);
                         ui.horizontal(|ui| {
                             ui.add(egui::Spinner::new().size(16.0).color(t.accent));
@@ -1108,7 +1131,7 @@ impl App {
                 ui.add_space(14.0);
                 ui.label(RichText::new(t!("Jellyfin oder Emby verbinden")).font(theme::semibold(22.0)).color(t.text));
                 ui.add_space(6.0);
-                ui.label(RichText::new(t!("Velour erkennt selbst, ob es ein Jellyfin- oder Emby-Server ist. Gespeichert wird nur ein Zugangsschlüssel, nicht dein Passwort.")).color(t.text_dim));
+                ui.label(RichText::new(t!("Velouna erkennt selbst, ob es ein Jellyfin- oder Emby-Server ist. Gespeichert wird nur ein Zugangsschlüssel, nicht dein Passwort.")).color(t.text_dim));
                 ui.add_space(18.0);
             });
             ui.vertical_centered(|ui| {
@@ -2412,7 +2435,7 @@ impl App {
 
     // --------------------------------------------------- library integration
 
-    /// "Weiterschauen auf <Server>" shelf for Velour's own start page.
+    /// "Weiterschauen auf <Server>" shelf for Velouna's own start page.
     pub fn plex_home_shelf(&mut self, ui: &mut Ui) {
         if !self.plex.ready() || !self.data.settings.plex_on_home {
             return;

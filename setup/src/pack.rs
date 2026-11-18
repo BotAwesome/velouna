@@ -1,4 +1,4 @@
-//! velour-pack <stub.exe> <out.exe> <version> <name>=<file>...
+//! velouna-pack <stub.exe> <out.exe> <version> <name>=<file>...
 //!
 //! Writes the setup stub followed by the compressed program files.
 
@@ -12,7 +12,7 @@ use std::io::{self, BufWriter, Write};
 fn main() -> io::Result<()> {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.len() < 4 {
-        eprintln!("usage: velour-pack <stub.exe> <out.exe> <version> <name>=<file>...");
+        eprintln!("usage: velouna-pack <stub.exe> <out.exe> <version> <name>=<file>...");
         std::process::exit(2);
     }
     let (stub, out, version) = (&args[0], &args[1], &args[2]);

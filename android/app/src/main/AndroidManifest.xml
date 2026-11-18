@@ -12,7 +12,7 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <!-- Screenshots into Pictures/Velour on Android 8 and 9 (later versions
+    <!-- Screenshots into Pictures/Velouna on Android 8 and 9 (later versions
          need nothing for the app's own files there). -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
     <!-- Optional, only if the user turns it on in the settings: playlist
@@ -22,7 +22,7 @@
 
     <!-- Player in the notification shade / on the lock screen, which also
          keeps playback alive in the background. Media notifications are
-         exempt from the Android 13 notification permission, so Velour
+         exempt from the Android 13 notification permission, so Velouna
          doesn't ask for POST_NOTIFICATIONS. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
@@ -30,21 +30,21 @@
     <uses-feature android:glEsVersion="0x00030000" android:required="true" />
 
     <application
-        android:label="Velour"
+        android:label="Velouna"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
-        android:theme="@style/Theme.Velour"
+        android:theme="@style/Theme.Velouna"
         android:hasCode="true"
         android:requestLegacyExternalStorage="true"
         android:usesCleartextTraffic="true">
 
         <activity
-            android:name=".VelourActivity"
+            android:name=".VelounaActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|keyboard|keyboardHidden|navigation|density|uiMode"
             android:windowSoftInputMode="adjustResize">
-            <meta-data android:name="android.app.lib_name" android:value="velour_android" />
+            <meta-data android:name="android.app.lib_name" android:value="velouna_android" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

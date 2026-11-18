@@ -1,27 +1,27 @@
 <div align="center">
 
-<img src="docs/assets/icon.svg" width="88" alt="Velour logo">
+<img src="docs/assets/icon.svg" width="88" alt="Velouna logo">
 
-# Velour
+# Velouna
 
 **A blazing fast media player for Windows, Linux and Android, built on mpv.**
 
-Double-click a video and the picture is there in about half a second – even when Velour
+Double-click a video and the picture is there in about half a second – even when Velouna
 wasn't running. Your videos and music, your Plex, Jellyfin or Emby server, thousands of
 free TV and radio stations – in one player with thin bars and a thick seek bar.
 
-[![Latest release](https://img.shields.io/github/v/release/BotAwesome/velour?color=D83F5C&label=release)](https://github.com/BotAwesome/velour/releases/latest)
+[![Latest release](https://img.shields.io/github/v/release/BotAwesome/velouna?color=D83F5C&label=release)](https://github.com/BotAwesome/velouna/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-1A1220)](LICENSE)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%20%7C%2011-2b2b2b)
 ![Linux](https://img.shields.io/badge/Linux-.deb%20%7C%20.tar.gz-2b2b2b)
 ![Android 8+](https://img.shields.io/badge/Android-8%2B-2b2b2b)
 
-[**Download**](https://github.com/BotAwesome/velour/releases/latest) ·
-[Website](https://botawesome.github.io/velour/) ·
+[**Download**](https://github.com/BotAwesome/velouna/releases/latest) ·
+[Website](https://botawesome.github.io/velouna/) ·
 [Changelog](CHANGELOG.md) ·
 [Build from source](#build-from-source)
 
-<img src="docs/screenshots/desktop-player.jpg" alt="Velour on Windows: chapter preview above the seek bar">
+<img src="docs/screenshots/desktop-player.jpg" alt="Velouna on Windows: chapter preview above the seek bar">
 
 </div>
 
@@ -31,7 +31,7 @@ From double-click to the first frame on screen (or the first sound for music), m
 with the release build on a laptop with an AMD Ryzen AI 7 350, its integrated Radeon 860M
 graphics and an NVMe SSD:
 
-| | Velour not running yet | Velour already open |
+| | Velouna not running yet | Velouna already open |
 |---|---|---|
 | Video, 1080p H.264 | **0.53 s** | 0.12 – 0.56 s |
 | Video, 4K HEVC 10-bit | **0.6 s** | 0.16 – 0.59 s |
@@ -39,8 +39,8 @@ graphics and an NVMe SSD:
 
 No splash screen and no library scan before playback: the file goes to mpv the moment
 the window can show a picture, decoded on the graphics card. Opening another file hands
-it to the window that is already open instead of starting a second Velour. The very first
-start after booting takes a little longer while the system reads Velour from disk.
+it to the window that is already open instead of starting a second Velouna. The very first
+start after booting takes a little longer while the system reads Velouna from disk.
 
 ## Highlights
 
@@ -86,6 +86,24 @@ stays in sync with your server.
 <tr>
 <td valign="top">
 
+**Music you can see**<br>
+Visualizers that know the whole song: Velouna analyses beats, kicks, build-ups and drops
+once, and the picture follows them. The Velounizer brings Ink, Aurora and Contour. With
+the visualizer off, songs get a now-playing page with cover and queue.
+
+</td>
+<td valign="top">
+
+**Plugins**<br>
+Install visualizers from the built-in catalog or from any repo by its link. Repos are
+signed. Write your own with a GLSL shader and a little Lua:
+[velouna-plugins](https://github.com/BotAwesome/velouna-plugins).
+
+</td>
+</tr>
+<tr>
+<td valign="top">
+
 **Android**<br>
 A touch layout: swipe for volume and brightness, double-tap the edges to skip, lock the
 screen, and rearrange the player bar live with drag and drop.
@@ -94,7 +112,7 @@ screen, and rearrange the player bar live with drag and drop.
 <td valign="top">
 
 **Everywhere**<br>
-German and English, light and dark theme, your own accent color. Velour updates itself
+German and English, light and dark theme, your own accent color. Velouna updates itself
 from GitHub releases and shows what changed before it installs anything.
 
 </td>
@@ -103,7 +121,7 @@ from GitHub releases and shows what changed before it installs anything.
 
 ## Screenshots
 
-More on the [website](https://botawesome.github.io/velour/#screenshots).
+More on the [website](https://botawesome.github.io/velouna/#screenshots).
 
 <table>
 <tr>
@@ -126,15 +144,15 @@ The videos in these screenshots are generated with FFmpeg (fractals and cellular
 
 ## Install
 
-Get the files from the [latest release](https://github.com/BotAwesome/velour/releases/latest).
+Get the files from the [latest release](https://github.com/BotAwesome/velouna/releases/latest).
 
 | | |
 |---|---|
-| **Windows 10/11 (64-bit)** | Run `Velour-Setup-<version>.exe`. It installs for your user only (no admin rights) and brings FFmpeg along. Uninstall from *Settings → Apps*. |
-| **Linux (x86_64)** – Pop!_OS, Ubuntu 22.04+, Debian 12, Mint … | `sudo apt install ./velour_<version>_amd64.deb` installs to `/opt/velour`. Other distributions (glibc 2.35+): unpack `velour-<version>-linux-x86_64.tar.gz` and run `./install.sh` (no root). Both bring mpv, FFmpeg and yt-dlp along. |
-| **Android 8 or newer (arm64)** | Open `Velour-<version>-arm64.apk` on the phone and allow installing apps from that source when Android asks. |
+| **Windows 10/11 (64-bit)** | Run `Velouna-Setup-<version>.exe`. It installs for your user only (no admin rights) and brings FFmpeg along. Uninstall from *Settings → Apps*. |
+| **Linux (x86_64)** – Pop!_OS, Ubuntu 22.04+, Debian 12, Mint … | `sudo apt install ./velouna_<version>_amd64.deb` installs to `/opt/velouna`. Other distributions (glibc 2.35+): unpack `velouna-<version>-linux-x86_64.tar.gz` and run `./install.sh` (no root). Both bring mpv, FFmpeg and yt-dlp along. |
+| **Android 8 or newer (arm64)** | Open `Velouna-<version>-arm64.apk` on the phone and allow installing apps from that source when Android asks. |
 
-Velour looks for a new release once a day (you can turn that off in *Settings → General*)
+Velouna looks for a new release once a day (you can turn that off in *Settings → General*)
 and asks before it installs anything.
 
 ## Build from source
@@ -153,7 +171,7 @@ You need a current stable [Rust](https://rustup.rs) (edition 2024).
 
    `cargo run -- --phone` opens the phone layout in a window (F9 rotates).
 
-3. Installer: `pwsh installer\build.ps1` builds `dist\Velour-Setup-<version>.exe`
+3. Installer: `pwsh installer\build.ps1` builds `dist\Velouna-Setup-<version>.exe`
    (needs `ffmpeg.exe` and `ffprobe.exe` on `PATH` or `-FFmpegDir`).
 
 ### Linux
@@ -162,14 +180,14 @@ Built on Windows as a cross-compile with [cargo-zigbuild](https://github.com/rus
 (zig from `pip install ziglang`, its folder on `PATH`):
 
 ```bash
-cargo zigbuild --release -p velour --target x86_64-unknown-linux-gnu.2.31
+cargo zigbuild --release -p velouna --target x86_64-unknown-linux-gnu.2.31
 python tools/linux/package.py
 ```
 
 The packages bring their own mpv, FFmpeg and yt-dlp from `dist/linux-runtime`, which
 `tools/linux/build-libs.sh` builds in an Ubuntu 22.04 container
 (`docker run --rm -v "$PWD/out:/out" -v "$PWD/build-libs.sh:/build-libs.sh:ro" ubuntu:22.04 bash /build-libs.sh`).
-`package.py` writes `dist/velour_<version>_amd64.deb` and `dist/velour-<version>-linux-x86_64.tar.gz`.
+`package.py` writes `dist/velouna_<version>_amd64.deb` and `dist/velouna-<version>-linux-x86_64.tar.gz`.
 
 ### Android
 
@@ -187,7 +205,7 @@ The APK ends up in `android\app\build\outputs\apk\release\`.
 
 Raise the version in `Cargo.toml`, add a section for it at the top of `CHANGELOG.md`, commit,
 then run `pwsh tools\release.ps1 -Publish`. It builds the installer, the APK and the Linux packages and publishes
-a GitHub release with the changelog section as its text. Installed copies of Velour pick it
+a GitHub release with the changelog section as its text. Installed copies of Velouna pick it
 up from there.
 
 ## Project layout
@@ -206,17 +224,17 @@ up from there.
 
 ## Credits
 
-Velour stands on [mpv / libmpv](https://mpv.io), [FFmpeg](https://ffmpeg.org),
+Velouna stands on [mpv / libmpv](https://mpv.io), [FFmpeg](https://ffmpeg.org),
 [egui](https://github.com/emilk/egui), [Phosphor Icons](https://phosphoricons.com) and
 [libmpv-android](https://github.com/jarnedemeulemeester/libmpv-android).
 TV channels come from [iptv-org](https://github.com/iptv-org/iptv), program guides from
 [epgshare01](https://epgshare01.online) and radio stations from
-[Radio Browser](https://www.radio-browser.info); Velour does not host any streams.
-Velour is not affiliated with or endorsed by Plex Inc.
+[Radio Browser](https://www.radio-browser.info); Velouna does not host any streams.
+Velouna is not affiliated with or endorsed by Plex Inc.
 
 ## License
 
-Velour is free software under the [GNU General Public License v3.0 or later](LICENSE).
+Velouna is free software under the [GNU General Public License v3.0 or later](LICENSE).
 The Windows installer, the Linux packages and the Android app include mpv and FFmpeg,
 which come with their own licenses (listed in the installer's `licenses` folder and in
-`/usr/share/doc/velour/copyright` of the Linux package).
+`/usr/share/doc/velouna/copyright` of the Linux package).

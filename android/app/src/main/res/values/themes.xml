@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.Velour" parent="android:Theme.DeviceDefault.NoActionBar">
-        <item name="android:windowBackground">@color/velour_bg</item>
-        <item name="android:statusBarColor">@color/velour_bg</item>
-        <item name="android:navigationBarColor">@color/velour_bg</item>
+    <style name="Theme.Velouna" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowBackground">@color/velouna_bg</item>
+        <item name="android:statusBarColor">@color/velouna_bg</item>
+        <item name="android:navigationBarColor">@color/velouna_bg</item>
     </style>
 </resources>

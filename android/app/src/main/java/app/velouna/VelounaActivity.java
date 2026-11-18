@@ -1,4 +1,4 @@
-package app.velour;
+package app.velouna;
 
 import android.app.NativeActivity;
 import android.os.Build;
@@ -12,7 +12,7 @@ import android.view.WindowManager;
  * NativeActivity plus the few window calls that must run on the UI thread.
  * The Rust side (android_main thread) calls these through JNI.
  */
-public class VelourActivity extends NativeActivity {
+public class VelounaActivity extends NativeActivity {
 
     /** Keep the display on while media plays. */
     public void setKeepScreenOn(final boolean on) {
@@ -103,14 +103,14 @@ public class VelourActivity extends NativeActivity {
 
     // ------------------------------------------------------------ updates
 
-    private static final String ACTION_INSTALL = "app.velour.INSTALL_STATUS";
+    private static final String ACTION_INSTALL = "app.velouna.INSTALL_STATUS";
     /** -100 nothing started, -1 running / waiting for the user, else PackageInstaller.STATUS_*. */
     private volatile int installStatus = -100;
     private volatile String installMessage = "";
 
     /**
      * Installs a downloaded APK over this app with the system package
-     * installer; the user confirms in the system dialog (and allows Velour
+     * installer; the user confirms in the system dialog (and allows Velouna
      * as a source the first time).
      */
     public void installApk(final String path) {
@@ -126,13 +126,13 @@ public class VelourActivity extends NativeActivity {
                 int id = pi.createSession(params);
                 try (android.content.pm.PackageInstaller.Session s = pi.openSession(id)) {
                     try (java.io.InputStream in = new java.io.FileInputStream(f);
-                         java.io.OutputStream out = s.openWrite("velour.apk", 0, f.length())) {
+                         java.io.OutputStream out = s.openWrite("velouna.apk", 0, f.length())) {
                         byte[] buf = new byte[1 << 16];
                         int n;
                         while ((n = in.read(buf)) > 0) out.write(buf, 0, n);
                         s.fsync(out);
                     }
-                    android.content.Intent i = new android.content.Intent(this, VelourActivity.class).setAction(ACTION_INSTALL);
+                    android.content.Intent i = new android.content.Intent(this, VelounaActivity.class).setAction(ACTION_INSTALL);
                     // FLAG_MUTABLE (API 31+): the installer fills in the result.
                     int flags = android.app.PendingIntent.FLAG_UPDATE_CURRENT | (Build.VERSION.SDK_INT >= 31 ? 0x02000000 : 0);
                     android.app.PendingIntent p = android.app.PendingIntent.getActivity(this, id, i, flags);
@@ -168,12 +168,12 @@ public class VelourActivity extends NativeActivity {
         installStatus = status;
     }
 
-    /** Velour may install APKs ("install unknown apps" for this app). */
+    /** Velouna may install APKs ("install unknown apps" for this app). */
     public boolean canInstallPackages() {
         return getPackageManager().canRequestPackageInstalls();
     }
 
-    /** Opens the system page where the user allows Velour to install apps. */
+    /** Opens the system page where the user allows Velouna to install apps. */
     public void openInstallPermission() {
         runOnUiThread(() -> {
             try {
@@ -205,7 +205,7 @@ public class VelourActivity extends NativeActivity {
     }
 
     /**
-     * What Velour may read: bit 1 videos, bit 2 music, bit 4 all files
+     * What Velouna may read: bit 1 videos, bit 2 music, bit 4 all files
      * (subtitles and playlists next to the media as well).
      */
     public int storageAccess() {
@@ -225,14 +225,14 @@ public class VelourActivity extends NativeActivity {
         return bits;
     }
 
-    /** Velour asked for the storage permission before (shown once by itself). */
+    /** Velouna asked for the storage permission before (shown once by itself). */
     public boolean storageAsked() {
         return getPreferences(MODE_PRIVATE).getBoolean("storage_asked", false);
     }
 
     /**
      * Asks for the media permissions; once Android no longer shows the
-     * dialog (denied twice), opens Velour's page in the system settings.
+     * dialog (denied twice), opens Velouna's page in the system settings.
      */
     public void requestStorage() {
         runOnUiThread(() -> {
@@ -298,7 +298,7 @@ public class VelourActivity extends NativeActivity {
     /**
      * Opens the system picker. The answer arrives in {@link #takePick()}:
      * file paths (or fdclose://N for files without one), "!name" for an
-     * item Velour can't open, nothing when cancelled.
+     * item Velouna can't open, nothing when cancelled.
      */
     public void pick(final int mode, final boolean multiple) {
         pickResult = null;
@@ -481,7 +481,7 @@ public class VelourActivity extends NativeActivity {
         try {
             nativeMediaAction(action, arg);
         } catch (Throwable t) {
-            android.util.Log.w("Velour", "media action " + action + ": " + t);
+            android.util.Log.w("Velouna", "media action " + action + ": " + t);
         }
     }
 
@@ -506,7 +506,7 @@ public class VelourActivity extends NativeActivity {
                             final float speed, final String artFile) {
         runOnUiThread(() -> {
             if (session == null) {
-                session = new android.media.session.MediaSession(this, "Velour");
+                session = new android.media.session.MediaSession(this, "Velouna");
                 session.setCallback(new android.media.session.MediaSession.Callback() {
                     @Override public void onPlay() { mediaAction(MEDIA_PLAY, 0); }
                     @Override public void onPause() { mediaAction(MEDIA_PAUSE, 0); }
@@ -515,7 +515,7 @@ public class VelourActivity extends NativeActivity {
                     @Override public void onSkipToPrevious() { mediaAction(MEDIA_PREV, 0); }
                     @Override public void onSeekTo(long pos) { mediaAction(MEDIA_SEEK, pos); }
                 });
-                android.content.Intent open = new android.content.Intent(this, VelourActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
+                android.content.Intent open = new android.content.Intent(this, VelounaActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP);
                 session.setSessionActivity(android.app.PendingIntent.getActivity(this, 0, open,
                         android.app.PendingIntent.FLAG_IMMUTABLE | android.app.PendingIntent.FLAG_UPDATE_CURRENT));
             }

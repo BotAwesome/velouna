@@ -12,5 +12,5 @@ dependencyResolutionManagement {
         mavenCentral()
     }
 }
-rootProject.name = "Velour"
+rootProject.name = "Velouna"
 include(":app")

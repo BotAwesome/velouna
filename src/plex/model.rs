@@ -113,39 +113,24 @@ pub struct Role {
 pub struct StreamInfo {
     /// 1 video, 2 audio, 3 subtitle
     pub stream_type: i64,
-    pub codec: String,
     pub language: String,
     pub title: String,
     pub display: String,
-    pub channels: i64,
-    pub selected: bool,
-    pub default: bool,
-    pub forced: bool,
     pub external_key: String,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Part {
-    pub id: i64,
     pub key: String,
     pub file: String,
     pub size: i64,
-    pub duration_ms: i64,
-    pub container: String,
     pub streams: Vec<StreamInfo>,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct MediaVersion {
-    pub id: i64,
     pub resolution: String,
     pub video_codec: String,
-    pub audio_codec: String,
-    pub audio_channels: i64,
-    pub container: String,
-    pub bitrate: i64,
-    pub width: i64,
-    pub height: i64,
     pub hdr: String,
     pub parts: Vec<Part>,
 }
@@ -200,25 +185,11 @@ pub fn codec_name(c: &str) -> String {
     }
 }
 
-pub fn channels_name(n: i64) -> String {
-    match n {
-        0 => String::new(),
-        1 => "Mono".into(),
-        2 => "Stereo".into(),
-        6 => "5.1".into(),
-        8 => "7.1".into(),
-        x => tf!("{x} Kanäle"),
-    }
-}
-
 #[derive(Clone, Debug, Default)]
 pub struct Item {
     pub rating_key: String,
-    pub key: String,
     pub kind: Kind,
-    pub subtype: String,
     pub title: String,
-    pub title_sort: String,
     pub original_title: String,
     pub parent_title: String,
     pub grandparent_title: String,
@@ -239,24 +210,16 @@ pub struct Item {
     pub child_count: i64,
     pub thumb: String,
     pub art: String,
-    pub parent_thumb: String,
     pub grandparent_thumb: String,
     pub grandparent_art: String,
     pub composite: String,
     pub originally_available: String,
-    pub added_at: i64,
     pub ratings: Vec<Rating>,
-    pub audience_rating: Option<f64>,
-    pub rating: Option<f64>,
-    pub audience_rating_image: String,
-    pub rating_image: String,
     pub genres: Vec<String>,
     pub directors: Vec<String>,
     pub writers: Vec<String>,
     pub roles: Vec<Role>,
-    pub collections: Vec<String>,
     pub media: Vec<MediaVersion>,
-    pub smart: bool,
     pub library_section_id: String,
     pub library_section_title: String,
     /// Next episode to watch (shows, with `includeOnDeck=1`).
@@ -268,15 +231,8 @@ impl Item {
         let media = arr(v, "Media")
             .iter()
             .map(|m| MediaVersion {
-                id: i(m, "id"),
                 resolution: s(m, "videoResolution"),
                 video_codec: s(m, "videoCodec"),
-                audio_codec: s(m, "audioCodec"),
-                audio_channels: i(m, "audioChannels"),
-                container: s(m, "container"),
-                bitrate: i(m, "bitrate"),
-                width: i(m, "width"),
-                height: i(m, "height"),
                 hdr: {
                     let dp = s(m, "videoDynamicRange");
                     if !dp.is_empty() && dp != "SDR" { dp } else if b(m, "DOVIPresent") { "Dolby Vision".into() } else { String::new() }
@@ -284,27 +240,19 @@ impl Item {
                 parts: arr(m, "Part")
                     .iter()
                     .map(|p| Part {
-                        id: i(p, "id"),
                         key: s(p, "key"),
                         file: s(p, "file"),
                         size: i(p, "size"),
-                        duration_ms: i(p, "duration"),
-                        container: s(p, "container"),
                         streams: arr(p, "Stream")
                             .iter()
                             .map(|st| StreamInfo {
                                 stream_type: i(st, "streamType"),
-                                codec: s(st, "codec"),
                                 language: {
                                     let l = s(st, "language");
                                     if l.is_empty() { s(st, "languageTag") } else { l }
                                 },
                                 title: s(st, "title"),
                                 display: s(st, "displayTitle"),
-                                channels: i(st, "channels"),
-                                selected: b(st, "selected"),
-                                default: b(st, "default"),
-                                forced: b(st, "forced"),
                                 external_key: s(st, "key"),
                             })
                             .collect(),
@@ -327,11 +275,8 @@ impl Item {
         }
         Item {
             rating_key: s(v, "ratingKey"),
-            key: s(v, "key"),
             kind: Kind::parse(&s(v, "type")),
-            subtype: s(v, "subtype"),
             title: s(v, "title"),
-            title_sort: s(v, "titleSort"),
             original_title: s(v, "originalTitle"),
             parent_title: s(v, "parentTitle"),
             grandparent_title: s(v, "grandparentTitle"),
@@ -352,24 +297,16 @@ impl Item {
             child_count: i(v, "childCount"),
             thumb: s(v, "thumb"),
             art: s(v, "art"),
-            parent_thumb: s(v, "parentThumb"),
             grandparent_thumb: s(v, "grandparentThumb"),
             grandparent_art: s(v, "grandparentArt"),
             composite: s(v, "composite"),
             originally_available: s(v, "originallyAvailableAt"),
-            added_at: i(v, "addedAt"),
             ratings,
-            audience_rating: of(v, "audienceRating"),
-            rating: of(v, "rating"),
-            audience_rating_image: s(v, "audienceRatingImage"),
-            rating_image: s(v, "ratingImage"),
             genres: tags(v, "Genre"),
             directors: tags(v, "Director"),
             writers: tags(v, "Writer"),
             roles: arr(v, "Role").iter().map(|r| Role { name: s(r, "tag"), role: s(r, "role"), thumb: s(r, "thumb") }).collect(),
-            collections: tags(v, "Collection"),
             media,
-            smart: b(v, "smart"),
             library_section_id: s(v, "librarySectionID"),
             library_section_title: s(v, "librarySectionTitle"),
             on_deck: v
@@ -500,12 +437,11 @@ pub struct Section {
     pub key: String,
     pub kind: String,
     pub title: String,
-    pub agent: String,
 }
 
 impl Section {
     pub fn parse(v: &Value) -> Section {
-        Section { key: s(v, "key"), kind: s(v, "type"), title: s(v, "title"), agent: s(v, "agent") }
+        Section { key: s(v, "key"), kind: s(v, "type"), title: s(v, "title"), }
     }
     /// Plex `type` number used for `/all?type=`.
     pub fn type_num(&self) -> u8 {
@@ -543,9 +479,7 @@ pub struct Hub {
     pub title: String,
     pub key: String,
     pub identifier: String,
-    pub kind: String,
     pub more: bool,
-    pub size: i64,
     pub items: Vec<Item>,
 }
 
@@ -555,9 +489,7 @@ impl Hub {
             title: s(v, "title"),
             key: s(v, "key"),
             identifier: s(v, "hubIdentifier"),
-            kind: s(v, "type"),
             more: b(v, "more"),
-            size: i(v, "size"),
             items: arr(v, "Metadata").iter().chain(arr(v, "Directory").iter()).map(Item::parse).collect(),
         }
     }
@@ -660,7 +592,6 @@ pub fn parse_resources(v: &Value) -> Vec<Server> {
 #[derive(Clone, Debug, Default)]
 pub struct User {
     pub name: String,
-    pub thumb: String,
 }
 
 pub fn parse_user(v: &Value) -> User {
@@ -668,5 +599,5 @@ pub fn parse_user(v: &Value) -> User {
         let t = s(v, "friendlyName");
         if t.is_empty() { s(v, "username") } else { t }
     };
-    User { name, thumb: s(v, "thumb") }
+    User { name, }
 }

@@ -1,4 +1,4 @@
-# Builds the Velour APK.
+# Builds the Velouna APK.
 #
 #   pwsh android\build.ps1                 # debug APK, arm64 + x86_64
 #   pwsh android\build.ps1 -Abi arm64-v8a  # phones only (faster)
@@ -23,12 +23,12 @@ if (-not (Test-Path "$here\local.properties")) {
     "sdk.dir=$($env:ANDROID_HOME -replace '\\', '/')" | Set-Content "$here\local.properties"
 }
 
-# Rust library -> app/src/main/jniLibs/<abi>/libvelour_android.so
+# Rust library -> app/src/main/jniLibs/<abi>/libvelouna_android.so
 $jni = "$here\app\src\main\jniLibs"
 $targets = @(); foreach ($a in $Abi) { $targets += "-t"; $targets += $a }
 # (Not $profile: that is PowerShell's own variable, and a one-element array
 # from `if` collapses to a string, which splatting would split into chars.)
-$cargoArgs = @("ndk") + $targets + @("-P", "26", "-o", $jni, "build", "-p", "velour-android")
+$cargoArgs = @("ndk") + $targets + @("-P", "26", "-o", $jni, "build", "-p", "velouna-android")
 if ($Release) { $cargoArgs += "--release" }
 Push-Location $root
 try {
@@ -41,7 +41,7 @@ $version = (Select-String -Path (Join-Path $root "Cargo.toml") -Pattern '^versio
 $task = if ($Release) { "assembleRelease" } else { "assembleDebug" }
 Push-Location $here
 try {
-    & .\gradlew.bat $task "-Pabis=$($Abi -join ',')" "-PvelourVersion=$version" --console=plain -q
+    & .\gradlew.bat $task "-Pabis=$($Abi -join ',')" "-PvelounaVersion=$version" --console=plain -q
     if ($LASTEXITCODE -ne 0) { throw "gradle $task failed" }
 } finally { Pop-Location }
 $variant = if ($Release) { "release" } else { "debug" }
@@ -51,5 +51,5 @@ Write-Host "APK: $($apk.FullName) ($([math]::Round($apk.Length / 1MB, 1)) MB)" -
 if ($Run) {
     adb install -r $apk.FullName
     if ($LASTEXITCODE -ne 0) { throw "adb install failed" }
-    adb shell am start -n app.velour/.VelourActivity
+    adb shell am start -n app.velouna/.VelounaActivity
 }

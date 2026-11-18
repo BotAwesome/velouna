@@ -1,4 +1,4 @@
-// The app is a NativeActivity around the Rust library libvelour_android.so,
+// The app is a NativeActivity around the Rust library libvelouna_android.so,
 // which android/build.ps1 builds with cargo-ndk into src/main/jniLibs.
 import java.util.Properties
 
@@ -7,16 +7,16 @@ plugins {
 }
 
 android {
-    namespace = "app.velour"
+    namespace = "app.velouna"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "app.velour"
+        applicationId = "app.velouna"
         minSdk = 26
         targetSdk = 35
         // build.ps1 passes the version from Cargo.toml; the code must grow
         // with every release for updates to install (1.2.3 -> 10203).
-        val ver = (project.findProperty("velourVersion") as String?) ?: "0.1.0"
+        val ver = (project.findProperty("velounaVersion") as String?) ?: "0.1.0"
         val parts = ver.substringBefore('-').split(".").map { it.toIntOrNull() ?: 0 } + listOf(0, 0, 0)
         versionCode = maxOf(1, parts[0] * 10000 + parts[1] * 100 + parts[2])
         versionName = ver
@@ -29,14 +29,20 @@ android {
     }
 
     // Release key: keystore.properties (storeFile, storePassword, keyAlias,
-    // keyPassword) from VELOUR_SIGNING or ~/.velour/signing, never in the
-    // repo. Without it, release builds fall back to the debug key, which
-    // can't update copies installed from GitHub releases.
-    val signingProps = (System.getenv("VELOUR_SIGNING")?.let { file(it) }
-        ?: file("${System.getProperty("user.home")}/.velour/signing/keystore.properties"))
+    // keyPassword) from VELOUNA_SIGNING or ~/.velouna/signing (the places
+    // from before the rename, VELOUR_SIGNING and ~/.velour/signing, still
+    // count), never in the repo. Without it, release builds fall back to the
+    // debug key, which can't update copies installed from GitHub releases.
+    val home = System.getProperty("user.home")
+    val signingProps = listOfNotNull(
+        System.getenv("VELOUNA_SIGNING")?.let { file(it) },
+        System.getenv("VELOUR_SIGNING")?.let { file(it) },
+        file("$home/.velouna/signing/keystore.properties"),
+        file("$home/.velour/signing/keystore.properties"),
+    ).firstOrNull { it.isFile } ?: file("$home/.velouna/signing/keystore.properties")
     if (signingProps.isFile) {
         val p = Properties().apply { signingProps.inputStream().use { load(it) } }
-        signingConfigs.create("velour") {
+        signingConfigs.create("velouna") {
             storeFile = file(p.getProperty("storeFile"))
             storePassword = p.getProperty("storePassword")
             keyAlias = p.getProperty("keyAlias")
@@ -47,7 +53,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.findByName("velour") ?: signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("velouna") ?: signingConfigs.getByName("debug")
         }
     }
 

@@ -82,6 +82,16 @@ pub enum Dialog {
     TvGuide { title: String, country: String, keys: Vec<String> },
     /// Local files that are gone: remove or keep (asked once).
     MissingMedia(Vec<String>),
+    /// A plugin file to install or update, waiting for the user's yes.
+    PluginInstall(Box<crate::plugins::Package>),
+    /// Remove a plugin: keep or delete its data.
+    PluginRemove(String),
+    /// A repo fetched by its link, waiting for "add".
+    RepoAdd(Box<crate::plugins::repo::Fetched>),
+    /// "Add repo": the link field.
+    RepoLink,
+    /// A repo now signed with another key: take the new one or not.
+    RepoKey(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -132,7 +142,6 @@ pub struct DialogBuffers {
     pub convert_progress: Option<(f64, f64)>,
     pub convert_result: Option<Result<String, String>>,
     pub hotkey_search: String,
-    pub onboarding_theme: Option<config::ThemeMode>,
 }
 
 pub const EQ_FREQS: [u32; 10] = [31, 62, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
@@ -177,7 +186,6 @@ pub struct App {
     pub dirty: bool,
     last_save: Instant,
     pub player: Option<Player>,
-    pub mpv_error: Option<String>,
     pub video: Option<VideoRenderer>,
     pub tools: MediaTools,
     pub bindings: Bindings,
@@ -237,7 +245,15 @@ pub struct App {
     pub eq_open: bool,
     pub info_open: bool,
     pub drag_hover_files: bool,
-    pub quit_requested: bool,
+    /// Installed extensions (read on first use, not at start).
+    pub plugins: crate::plugins::Plugins,
+    /// Plugin repos: fetched indexes, catalog picks, install queue.
+    pub repo_ui: crate::ui_plugins::RepoUi,
+    /// Song analysis for the visualizer (only while one is visible).
+    pub songs: crate::viz::Songs,
+    pub viz: crate::ui_viz::VizHandle,
+    /// Parsed visualizer manifests by "id@version".
+    pub viz_manifests: std::collections::HashMap<String, Option<std::sync::Arc<crate::viz::preset::VizManifest>>>,
     pub was_fullscreen: bool,
     /// Whole window before the safe-area insets (touch layout).
     pub full_screen: egui::Rect,
@@ -268,13 +284,22 @@ pub struct App {
     pub stream_logos: HashMap<String, String>,
     /// Stream URLs of radio stations put in the queue (live, no end).
     pub radio_urls: std::collections::HashSet<String>,
+    /// Where the queue came from (album, folder, playlist), for the
+    /// now-playing page.
+    pub queue_origin: crate::ui_queue::QueueOrigin,
+    /// Now-playing page: details instead of the list.
+    pub np_info: bool,
+    /// Now-playing page: the current title's cover and its colours.
+    pub np_art: Option<crate::ui_queue::NpArt>,
+    /// Bytes in the trimmable cache, as of the last trim (0 = not known yet).
+    pub cache_used: std::sync::Arc<std::sync::atomic::AtomicU64>,
     /// TV channels and radio stations queued from their pages (live, no
     /// position to remember).
     pub live_urls: std::collections::HashSet<String>,
     /// Android: the system picker is open for this.
     #[allow(dead_code)]
     pub pending_pick: Option<crate::pick::Pick>,
-    /// What Velour may read on the device (always everything on desktop).
+    /// What Velouna may read on the device (always everything on desktop).
     pub storage: crate::pick::StorageAccess,
     /// When `storage` was last asked (Android, the user may change it in
     /// the system settings at any time).
@@ -391,7 +416,6 @@ impl App {
             px: Default::default(),
             last_save: Instant::now(),
             player,
-            mpv_error: mpv_error.clone(),
             video,
             tools,
             bindings,
@@ -447,7 +471,11 @@ impl App {
             eq_open: false,
             info_open: false,
             drag_hover_files: false,
-            quit_requested: false,
+            plugins: Default::default(),
+            repo_ui: Default::default(),
+            songs: Default::default(),
+            viz: Default::default(),
+            viz_manifests: Default::default(),
             was_fullscreen: false,
             full_screen: egui::Rect::NOTHING,
             safe_insets: [0.0; 4],
@@ -463,6 +491,10 @@ impl App {
             logos: crate::plex::images::Images::web(ctx.clone(), "logo_img", 192),
             stream_logos: HashMap::new(),
             radio_urls: Default::default(),
+            queue_origin: Default::default(),
+            np_info: false,
+            np_art: None,
+            cache_used: Default::default(),
             live_urls: Default::default(),
             pending_pick: None,
             storage: crate::pick::StorageAccess::current(),
@@ -475,6 +507,7 @@ impl App {
         app.apply_sub_style_from_settings();
         app.apply_audio_filters();
         app.apply_repeat();
+        crate::cache::trim_in_background(app.data.settings.cache_limit_mb, app.cache_used.clone());
         // First start of a new version: show what changed (not on a fresh install).
         let last = std::mem::replace(&mut app.data.settings.last_run_version, crate::update::CURRENT.to_string());
         if last != crate::update::CURRENT {
@@ -588,7 +621,10 @@ impl App {
     // ------------------------------------------------------------- opening
 
     pub fn open_paths(&mut self, paths: Vec<String>) {
-        let paths: Vec<String> = paths.into_iter().filter(|p| !p.trim().is_empty()).collect();
+        let (plugins, paths): (Vec<String>, Vec<String>) = paths.into_iter().filter(|p| !p.trim().is_empty()).partition(|p| crate::plugins::is_package(p));
+        if let Some(f) = plugins.first() {
+            self.offer_plugin(std::path::Path::new(f));
+        }
         if paths.is_empty() || self.player.is_none() {
             return;
         }
@@ -619,17 +655,24 @@ impl App {
         if files.len() == 1 && self.data.settings.play_folder_on_open && !media::is_url(&files[0]) && !media::is_playlist(&files[0]) {
             let sib = media::sibling_media(&files[0]);
             if let Some(idx) = sib.iter().position(|s| s == &files[0]) {
-                self.play_list(&sib, idx);
+                if self.play_list(&sib, idx) {
+                    self.view = View::Player;
+                }
                 return;
             }
         }
-        self.play_list(&files, 0);
+        // Opened from outside (start, dialog, drop): music shows its
+        // now-playing page right away; from the library it stays there.
+        if self.play_list(&files, 0) {
+            self.view = View::Player;
+        }
     }
 
-    /// Replace the queue with `list` and start playing at `start`.
-    pub fn play_list(&mut self, list: &[String], start: usize) {
+    /// Replace the queue with `list` and start playing at `start`; false
+    /// when nothing of it could be played.
+    pub fn play_list(&mut self, list: &[String], start: usize) -> bool {
         if self.player.is_none() || list.is_empty() {
-            return;
+            return false;
         }
         // Files that are gone don't go into the queue; playback starts at
         // the next one that is still there.
@@ -637,10 +680,11 @@ impl App {
         let before = list.iter().take(start).filter(|p| media_state(p) == MediaState::Here).count();
         let list = self.drop_missing(list);
         if list.is_empty() {
-            return;
+            return false;
         }
         let start = before.min(list.len() - 1);
-        let Some(p) = &self.player else { return };
+        self.queue_origin = crate::ui_queue::QueueOrigin::of_list(&list);
+        let Some(p) = &self.player else { return false };
         p.load(&list[start], LoadMode::Replace, None);
         for (i, item) in list.iter().enumerate().take(start) {
             let _ = p.mpv.command(&["loadfile", item, "insert-at", &i.to_string()]);
@@ -653,10 +697,12 @@ impl App {
         } else {
             p.set_pause(false);
         }
-        // Music stays in the library (mini player); there is nothing to watch.
-        if !media::is_audio(&list[start]) {
+        // Music stays in the library (mini player), unless a visualizer
+        // gives it something to watch.
+        if !media::is_audio(&list[start]) || (self.data.settings.visualizer && self.viz_choice().is_some()) {
             self.view = View::Player;
         }
+        true
     }
 
     /// Files handed over by a second start, as the setting says.
@@ -713,6 +759,11 @@ impl App {
         }
         let Some(p) = &self.player else { return };
         let was_idle = !p.st.has_media();
+        if was_idle {
+            self.queue_origin = crate::ui_queue::QueueOrigin::of_list(list);
+        } else {
+            self.queue_origin.added += list.len();
+        }
         for (i, item) in list.iter().enumerate() {
             if was_idle && i == 0 {
                 p.load(item, LoadMode::AppendPlay, None);
@@ -729,6 +780,7 @@ impl App {
         if list.is_empty() {
             return;
         }
+        self.queue_origin.added += list.len();
         let Some(p) = &self.player else { return };
         for item in list.iter().rev() {
             let _ = p.mpv.command(&["loadfile", item, "insert-next"]);
@@ -1785,8 +1837,8 @@ impl App {
             .player
             .as_ref()
             .filter(|p| p.st.has_media())
-            .map(|p| format!("{} – Velour", p.st.media_title))
-            .unwrap_or_else(|| "Velour Media Player".into());
+            .map(|p| format!("{} – Velouna", p.st.media_title))
+            .unwrap_or_else(|| "Velouna Media Player".into());
         if title != self.last_title {
             ctx.send_viewport_cmd(ViewportCommand::Title(title.clone()));
             self.last_title = title;
@@ -1840,8 +1892,13 @@ impl App {
         // drag and drop from the OS
         let (dropped, hovering) = ctx.input(|i| (i.raw.dropped_files.clone(), !i.raw.hovered_files.is_empty()));
         self.drag_hover_files = hovering;
-        if !dropped.is_empty() {
-            let paths: Vec<String> = dropped.iter().filter_map(|f| f.path.as_ref().map(|p| p.to_string_lossy().to_string())).collect();
+        let mut paths: Vec<String> = dropped.iter().filter_map(|f| f.path.as_ref().map(|p| p.to_string_lossy().to_string())).collect();
+        // Plugin files go to the install dialog, never to the player.
+        if let Some(file) = paths.iter().find(|p| crate::plugins::is_package(p)).cloned() {
+            paths.retain(|p| !crate::plugins::is_package(p));
+            self.offer_plugin(std::path::Path::new(&file));
+        }
+        if !paths.is_empty() {
             let all_subs = paths.iter().all(|p| media::is_sub(p));
             if all_subs || !self.has_media() {
                 self.open_paths(paths);
@@ -1947,6 +2004,7 @@ impl eframe::App for App {
             self.mobile_back(ctx);
         }
         self.handle_input(ctx);
+        self.poll_repos(ctx);
         self.draw(ctx);
         crate::ui_panels::paint_drag_ghost(ctx, &self.t);
         // The render context is made on the first video paint; a local file
@@ -2049,7 +2107,7 @@ mod missing_tests {
         assert_eq!(media_state("https://example.com/a.mp4"), MediaState::Here);
         assert_eq!(media_state("fdclose://12"), MediaState::Here);
         let dir = std::env::temp_dir();
-        assert_eq!(media_state(&dir.join("velour-surely-missing-123.mp4").to_string_lossy()), MediaState::Gone);
+        assert_eq!(media_state(&dir.join("velouna-surely-missing-123.mp4").to_string_lossy()), MediaState::Gone);
         #[cfg(windows)]
         {
             // A drive letter that is not mounted: the file may be fine.

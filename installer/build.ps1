@@ -1,8 +1,8 @@
-# Builds dist\Velour-Setup-<version>.exe (the custom installer in setup/).
+# Builds dist\Velouna-Setup-<version>.exe (the custom installer in setup/).
 #
 #   pwsh installer\build.ps1 [-FFmpegDir <folder with ffmpeg.exe/ffprobe.exe>]
 #
-# Bundled: velour.exe, lib\libmpv-2.dll, ffmpeg.exe, ffprobe.exe and license
+# Bundled: velouna.exe, lib\libmpv-2.dll, ffmpeg.exe, ffprobe.exe and license
 # texts. FFmpeg comes from -FFmpegDir or from PATH.
 param(
     [string]$FFmpegDir = ""
@@ -23,11 +23,11 @@ $mpv = Join-Path $root "lib\libmpv-2.dll"
 if (-not (Test-Path $mpv)) { throw "lib\libmpv-2.dll missing" }
 
 $version = (Select-String -Path (Join-Path $root "Cargo.toml") -Pattern '^version\s*=\s*"([^"]+)"' | Select-Object -First 1).Matches[0].Groups[1].Value
-Write-Host "Velour $version" -ForegroundColor Cyan
+Write-Host "Velouna $version" -ForegroundColor Cyan
 
 Push-Location $root
 try {
-    cargo build --release -p velour -p velour-setup
+    cargo build --release -p velouna -p velouna-setup
     if ($LASTEXITCODE -ne 0) { throw "cargo build failed" }
 } finally { Pop-Location }
 
@@ -40,7 +40,7 @@ foreach ($f in "LICENSE", "README.txt") {
     if (Test-Path $p) { Copy-Item $p "$stage\FFmpeg\" }
 }
 @"
-Velour bundles the following third-party components:
+Velouna bundles the following third-party components:
 
 mpv / libmpv (libmpv-2.dll)
   License: GPL-2.0-or-later / LGPL-2.1-or-later (depending on build)
@@ -54,7 +54,7 @@ egui / eframe (MIT OR Apache-2.0), Phosphor Icons (MIT)
 "@ | Set-Content -Encoding utf8 "$stage\THIRD-PARTY.txt"
 
 $entries = @(
-    "velour.exe=$root\target\release\velour.exe",
+    "velouna.exe=$root\target\release\velouna.exe",
     "libmpv-2.dll=$mpv",
     "ffmpeg.exe=$FFmpegDir\ffmpeg.exe",
     "ffprobe.exe=$FFmpegDir\ffprobe.exe",
@@ -64,6 +64,6 @@ Get-ChildItem "$stage\FFmpeg" -File | ForEach-Object { $entries += "licenses/FFm
 
 $dist = Join-Path $root "dist"
 New-Item -ItemType Directory -Force $dist | Out-Null
-$out = Join-Path $dist "Velour-Setup-$version.exe"
-& "$root\target\release\velour-pack.exe" "$root\target\release\velour-setup.exe" $out $version @entries
+$out = Join-Path $dist "Velouna-Setup-$version.exe"
+& "$root\target\release\velouna-pack.exe" "$root\target\release\velouna-setup.exe" $out $version @entries
 if ($LASTEXITCODE -ne 0) { throw "packing failed" }

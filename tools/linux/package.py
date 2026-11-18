@@ -1,17 +1,17 @@
-"""Builds the Linux packages of Velour from a cross-compiled binary.
+"""Builds the Linux packages of Velouna from a cross-compiled binary.
 
-    python tools/linux/package.py [path/to/velour]
+    python tools/linux/package.py [path/to/velouna]
 
-Default binary: target/x86_64-unknown-linux-gnu/release/velour (built with
-`cargo zigbuild --release -p velour --target x86_64-unknown-linux-gnu.2.31`,
+Default binary: target/x86_64-unknown-linux-gnu/release/velouna (built with
+`cargo zigbuild --release -p velouna --target x86_64-unknown-linux-gnu.2.31`,
 so it runs on glibc 2.31+: Pop!_OS / Ubuntu 20.04 and newer).
 
 Bundles the runtime from dist/linux-runtime (built by tools/linux/build-libs.sh
 on the VPS): lib/libmpv.so.2 with its libraries, ffmpeg, ffprobe, yt-dlp.
 
 Writes to dist/:
-  velour_<v>_amd64.deb             Debian/Ubuntu/Pop!_OS/Mint, installs to /opt/velour
-  velour-<v>-linux-x86_64.tar.gz   any distro: unpack, ./install.sh
+  velouna_<v>_amd64.deb             Debian/Ubuntu/Pop!_OS/Mint, installs to /opt/velouna
+  velouna-<v>-linux-x86_64.tar.gz   any distro: unpack, ./install.sh
 
 Runs on Windows too: the .deb is assembled by hand (ar + tar), no dpkg needed.
 """
@@ -24,9 +24,9 @@ import tarfile
 import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "target", "x86_64-unknown-linux-gnu", "release", "velour")
+BIN = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "target", "x86_64-unknown-linux-gnu", "release", "velouna")
 DIST = os.path.join(ROOT, "dist")
-RUNTIME = os.environ.get("VELOUR_LINUX_RUNTIME", os.path.join(DIST, "linux-runtime"))
+RUNTIME = os.environ.get("VELOUNA_LINUX_RUNTIME", os.path.join(DIST, "linux-runtime"))
 # System libraries the bundled libmpv and the window code (winit loads the
 # X11 libraries at runtime) use: graphics, audio, fonts. Every
 # desktop has them; the .deb names them so apt can check.
@@ -35,10 +35,10 @@ NOW = int(time.time())
 
 cargo = open(os.path.join(ROOT, "Cargo.toml"), encoding="utf-8").read()
 VERSION = re.search(r'^version\s*=\s*"([^"]+)"', cargo, re.M).group(1)
-# Beta builds: VELOUR_BETA=2 gives 0.1.3+beta2, which apt sorts above 0.1.3
+# Beta builds: VELOUNA_BETA=2 gives 0.1.3+beta2, which apt sorts above 0.1.3
 # and the earlier betas, so "apt install ./…deb" replaces them.
-if os.environ.get("VELOUR_BETA"):
-    VERSION = f"{VERSION}+beta{os.environ['VELOUR_BETA']}"
+if os.environ.get("VELOUNA_BETA"):
+    VERSION = f"{VERSION}+beta{os.environ['VELOUNA_BETA']}"
 ICON_SVG = open(os.path.join(ROOT, "docs", "assets", "icon.svg"), "rb").read()
 
 # MIME types for "Open with": the formats src/media.rs plays.
@@ -53,26 +53,26 @@ MIME = [
 
 DESKTOP = f"""[Desktop Entry]
 Type=Application
-Name=Velour
+Name=Velouna
 GenericName=Media Player
 GenericName[de]=Medienwiedergabe
 Comment=Videos, music, Plex, TV and radio
 Comment[de]=Videos, Musik, Plex, TV und Radio
-Exec=velour %F
-Icon=velour
+Exec=velouna %F
+Icon=velouna
 Terminal=false
 Categories=AudioVideo;Video;Audio;Player;
 Keywords=video;music;player;mpv;plex;tv;radio;
-StartupWMClass=velour
+StartupWMClass=velouna
 MimeType={";".join(MIME)};
 """
 
-# AppStream entry: lists Velour in COSMIC Store / GNOME Software / Discover
+# AppStream entry: lists Velouna in COSMIC Store / GNOME Software / Discover
 # once the .deb is installed.
 METAINFO = f"""<?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.botawesome.velour</id>
-  <name>Velour</name>
+  <id>io.github.botawesome.velouna</id>
+  <name>Velouna</name>
   <summary>Calm, fast media player for videos, music, Plex, TV and radio</summary>
   <summary xml:lang="de">Ruhiger, schneller Player für Videos, Musik, Plex, TV und Radio</summary>
   <metadata_license>CC0-1.0</metadata_license>
@@ -82,21 +82,21 @@ METAINFO = f"""<?xml version="1.0" encoding="UTF-8"?>
     <p>Videos and music, your Plex server and thousands of free TV and radio stations in one player with thin bars and a thick seek bar. Built on mpv.</p>
     <p xml:lang="de">Videos und Musik, dein Plex-Server und tausende freie TV- und Radiosender in einem Player mit schmalen Leisten und dicker Seek-Bar. Basiert auf mpv.</p>
   </description>
-  <launchable type="desktop-id">velour.desktop</launchable>
-  <url type="homepage">https://botawesome.github.io/velour/</url>
-  <url type="vcs-browser">https://github.com/BotAwesome/velour</url>
+  <launchable type="desktop-id">velouna.desktop</launchable>
+  <url type="homepage">https://botawesome.github.io/velouna/</url>
+  <url type="vcs-browser">https://github.com/BotAwesome/velouna</url>
   <categories><category>AudioVideo</category><category>Video</category><category>Audio</category><category>Player</category></categories>
-  <provides>{"".join(f"<mediatype>{m}</mediatype>" for m in MIME)}<binary>velour</binary></provides>
+  <provides>{"".join(f"<mediatype>{m}</mediatype>" for m in MIME)}<binary>velouna</binary></provides>
   <content_rating type="oars-1.1"/>
   <releases><release version="{VERSION}" date="{time.strftime('%Y-%m-%d', time.gmtime(NOW))}"/></releases>
 </component>
 """
 
-# What the package ships besides Velour, and under which licenses.
-COPYRIGHT = """Velour - GPL-3.0-or-later
-https://github.com/BotAwesome/velour
+# What the package ships besides Velouna, and under which licenses.
+COPYRIGHT = """Velouna - GPL-3.0-or-later
+https://github.com/BotAwesome/velouna
 
-Bundled in /opt/velour (Linux builds):
+Bundled in /opt/velouna (Linux builds):
   lib/libmpv.so.2   mpv (GPL-2.0-or-later) with FFmpeg (built --enable-gpl
                     --enable-version3, so GPL-3.0-or-later), libass, LuaJIT
   ffmpeg, ffprobe   FFmpeg, same build (GPL-3.0-or-later)
@@ -106,42 +106,47 @@ Bundled in /opt/velour (Linux builds):
                     (MIT), uchardet (MPL-1.1/GPL/LGPL), libjpeg-turbo (BSD-style),
                     LuaJIT (MIT) - taken from Ubuntu 22.04
 Sources: https://mpv.io, https://ffmpeg.org, https://github.com/yt-dlp/yt-dlp
-Build script: tools/linux/build-libs.sh in the Velour sources.
+Build script: tools/linux/build-libs.sh in the Velouna sources.
 """
 
 INSTALL_SH = """#!/bin/sh
-# Installs Velour for the current user (no root needed).
+# Installs Velouna for the current user (no root needed).
 set -e
 cd "$(dirname "$0")"
-APP="$HOME/.local/share/velour/app"
+# The app was called Velour before: its per-user install goes (settings stay
+# and are moved over on the first start).
+rm -rf "$HOME/.local/share/velour/app"
+rm -f "$HOME/.local/bin/velour" "$HOME/.local/share/applications/velour.desktop" "$HOME/.local/share/icons/hicolor/scalable/apps/velour.svg"
+rmdir "$HOME/.local/share/velour" 2>/dev/null || true
+APP="$HOME/.local/share/velouna/app"
 mkdir -p "$HOME/.local/bin" "$HOME/.local/share/applications" "$HOME/.local/share/icons/hicolor/scalable/apps"
 rm -rf "$APP"; mkdir -p "$APP"
-cp -a velour lib ffmpeg ffprobe yt-dlp "$APP/"
-ln -sf "$APP/velour" "$HOME/.local/bin/velour"
-sed "s|^Exec=velour|Exec=$APP/velour|" velour.desktop > "$HOME/.local/share/applications/velour.desktop"
-install -m 644 velour.svg "$HOME/.local/share/icons/hicolor/scalable/apps/velour.svg"
+cp -a velouna lib ffmpeg ffprobe yt-dlp "$APP/"
+ln -sf "$APP/velouna" "$HOME/.local/bin/velouna"
+sed "s|^Exec=velouna|Exec=$APP/velouna|" velouna.desktop > "$HOME/.local/share/applications/velouna.desktop"
+install -m 644 velouna.svg "$HOME/.local/share/icons/hicolor/scalable/apps/velouna.svg"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
 gtk-update-icon-cache -q "$HOME/.local/share/icons/hicolor" 2>/dev/null || true
-echo "Velour is installed. Start it from the app menu or with: ~/.local/bin/velour"
+echo "Velouna is installed. Start it from the app menu or with: ~/.local/bin/velouna"
 """
 
 UNINSTALL_SH = """#!/bin/sh
-# Removes the per-user install (your settings in ~/.config/velour stay).
-rm -rf "$HOME/.local/share/velour/app"
-rm -f "$HOME/.local/bin/velour" "$HOME/.local/share/applications/velour.desktop" "$HOME/.local/share/icons/hicolor/scalable/apps/velour.svg"
+# Removes the per-user install (your settings in ~/.config/velouna stay).
+rm -rf "$HOME/.local/share/velouna/app"
+rm -f "$HOME/.local/bin/velouna" "$HOME/.local/share/applications/velouna.desktop" "$HOME/.local/share/icons/hicolor/scalable/apps/velouna.svg"
 update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
-echo "Velour is removed."
+echo "Velouna is removed."
 """
 
-README = f"""Velour {VERSION} for Linux
+README = f"""Velouna {VERSION} for Linux
 
 Everything is included: mpv (libmpv), FFmpeg, ffprobe and yt-dlp.
 Needs glibc 2.35+ (Pop!_OS / Ubuntu 22.04 and newer, Debian 12, Fedora 36+).
-Log file: ~/.cache/velour/velour.log
+Log file: ~/.cache/velouna/velouna.log
 
 Install for your user:   ./install.sh
 Remove:                  ./uninstall.sh
-Or start it right here:  ./velour
+Or start it right here:  ./velouna
 """
 
 
@@ -220,44 +225,46 @@ def main():
 
     # ---------------------------------------------------------------- .deb
     data_files = [
-        ("./opt/velour/velour", binary, 0o755),
-        *runtime_files("./opt/velour"),
-        ("./usr/share/applications/velour.desktop", DESKTOP.encode(), 0o644),
-        ("./usr/share/icons/hicolor/scalable/apps/velour.svg", ICON_SVG, 0o644),
-        ("./usr/share/doc/velour/copyright", COPYRIGHT.encode(), 0o644),
-        ("./usr/share/metainfo/io.github.botawesome.velour.metainfo.xml", METAINFO.encode(), 0o644),
+        ("./opt/velouna/velouna", binary, 0o755),
+        *runtime_files("./opt/velouna"),
+        ("./usr/share/applications/velouna.desktop", DESKTOP.encode(), 0o644),
+        ("./usr/share/icons/hicolor/scalable/apps/velouna.svg", ICON_SVG, 0o644),
+        ("./usr/share/doc/velouna/copyright", COPYRIGHT.encode(), 0o644),
+        ("./usr/share/metainfo/io.github.botawesome.velouna.metainfo.xml", METAINFO.encode(), 0o644),
     ]
-    dirs = ["./", "./opt/", "./opt/velour/", "./opt/velour/lib/", "./usr/", "./usr/bin/", "./usr/share/", "./usr/share/applications/", "./usr/share/icons/",
+    dirs = ["./", "./opt/", "./opt/velouna/", "./opt/velouna/lib/", "./usr/", "./usr/bin/", "./usr/share/", "./usr/share/applications/", "./usr/share/icons/",
             "./usr/share/icons/hicolor/", "./usr/share/icons/hicolor/scalable/", "./usr/share/icons/hicolor/scalable/apps/",
-            "./usr/share/doc/", "./usr/share/doc/velour/", "./usr/share/metainfo/"]
+            "./usr/share/doc/", "./usr/share/doc/velouna/", "./usr/share/metainfo/"]
     installed_kb = sum(len(d) for _, d, _ in data_files) // 1024 + 1
-    control = f"""Package: velour
+    control = f"""Package: velouna
 Version: {VERSION}
 Architecture: amd64
 Maintainer: BotAwesome <53971900+BotAwesome@users.noreply.github.com>
 Installed-Size: {installed_kb}
 Depends: {DEPENDS}
+Conflicts: velour
+Replaces: velour
 Section: video
 Priority: optional
-Homepage: https://botawesome.github.io/velour/
+Homepage: https://botawesome.github.io/velouna/
 Description: Calm, fast media player built on mpv
  Videos and music, your Plex server and thousands of free TV and radio
  stations in one player with thin bars and a thick seek bar.
 """
     postinst = b"#!/bin/sh\nset -e\nupdate-desktop-database -q /usr/share/applications 2>/dev/null || true\ngtk-update-icon-cache -q /usr/share/icons/hicolor 2>/dev/null || true\nappstreamcli refresh-cache >/dev/null 2>&1 || true\n"
     control_tgz = targz([("./control", control.encode(), 0o644), ("./postinst", postinst, 0o755), ("./postrm", postinst, 0o755)], ["./"])
-    data_tgz = targz(data_files, dirs, [("./usr/bin/velour", "/opt/velour/velour")])
+    data_tgz = targz(data_files, dirs, [("./usr/bin/velouna", "/opt/velouna/velouna")])
     deb = ar([("debian-binary", b"2.0\n"), ("control.tar.gz", control_tgz), ("data.tar.gz", data_tgz)])
-    deb_path = os.path.join(DIST, f"velour_{VERSION}_amd64.deb")
+    deb_path = os.path.join(DIST, f"velouna_{VERSION}_amd64.deb")
     open(deb_path, "wb").write(deb)
 
     # ---------------------------------------------------------------- tar.gz
-    top = f"velour-{VERSION}-linux-x86_64"
+    top = f"velouna-{VERSION}-linux-x86_64"
     portable = targz([
-        (f"{top}/velour", binary, 0o755),
+        (f"{top}/velouna", binary, 0o755),
         *runtime_files(top),
-        (f"{top}/velour.desktop", DESKTOP.encode(), 0o644),
-        (f"{top}/velour.svg", ICON_SVG, 0o644),
+        (f"{top}/velouna.desktop", DESKTOP.encode(), 0o644),
+        (f"{top}/velouna.svg", ICON_SVG, 0o644),
         (f"{top}/COPYING-bundled.txt", COPYRIGHT.encode(), 0o644),
         (f"{top}/install.sh", INSTALL_SH.encode(), 0o755),
         (f"{top}/uninstall.sh", UNINSTALL_SH.encode(), 0o755),

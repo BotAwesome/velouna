@@ -173,6 +173,11 @@ impl App {
             Dialog::WhatsNew(notes) => self.dlg_whats_new(ui, notes.clone()),
             Dialog::TvGuide { title, country, keys } => self.dlg_tv_guide(ui, title, country, keys),
             Dialog::MissingMedia(list) => self.dlg_missing_media(ui, list.clone()),
+            Dialog::PluginInstall(pkg) => self.dlg_plugin_install(ui, pkg),
+            Dialog::PluginRemove(id) => self.dlg_plugin_remove(ui, id),
+            Dialog::RepoAdd(f) => self.dlg_repo_add(ui, f),
+            Dialog::RepoLink => self.dlg_repo_link(ui),
+            Dialog::RepoKey(url) => self.dlg_repo_key(ui, url),
         });
         let blocking = matches!(d, Dialog::Onboarding(_)) || self.rebinding.is_some() || matches!(d, Dialog::Convert if self.dlg.convert_progress.is_some());
         if resp.should_close() && !blocking && self.dialog == Some(d) {
@@ -683,7 +688,7 @@ impl App {
                     widgets::toggle(ui, &t, &mut s.always_on_top);
                 });
                 if !crate::platform::MOBILE {
-                    r.row(ui, t!("Nur ein Velour-Fenster"), t!("Öffnest du eine Datei, während Velour schon läuft, übernimmt das laufende Fenster sie. Aus: jede Datei öffnet ein neues Fenster."), |ui| {
+                    r.row(ui, t!("Nur ein Velouna-Fenster"), t!("Öffnest du eine Datei, während Velouna schon läuft, übernimmt das laufende Fenster sie. Aus: jede Datei öffnet ein neues Fenster."), |ui| {
                         widgets::toggle(ui, &t, &mut s.single_instance);
                     });
                     if s.single_instance {
@@ -726,10 +731,27 @@ impl App {
                         self.osd(t!("Verlauf gelöscht"));
                     }
                 });
-                r.row(ui, t!("Vorschaubild-Cache leeren"), "", |ui| {
+                r.section(ui, t!("Speicher"));
+                let used = self.cache_used.load(std::sync::atomic::Ordering::Relaxed);
+                let desc = if used > 0 {
+                    tf!("Vorschaubilder, Song-Analysen und Cover. Belegt: {} MB.", (used + 524_288) / 1_048_576)
+                } else {
+                    t!("Vorschaubilder, Song-Analysen und Cover.").to_string()
+                };
+                r.row(ui, t!("Cache-Größe höchstens"), &desc, |ui| {
+                    let before = s.cache_limit_mb;
+                    widgets::segmented(ui, &t, &mut s.cache_limit_mb, &[(256, "256 MB"), (1024, "1 GB"), (4096, "4 GB"), (16384, "16 GB")]);
+                    if s.cache_limit_mb != before {
+                        crate::cache::trim_in_background(s.cache_limit_mb, self.cache_used.clone());
+                    }
+                });
+                r.row(ui, t!("Cache leeren"), "", |ui| {
                     if ui.button(t!("Leeren")).clicked() {
-                        let _ = std::fs::remove_dir_all(config::cache_dir().join("thumbs"));
+                        for d in ["thumbs", "analysis"] {
+                            let _ = std::fs::remove_dir_all(config::cache_dir().join(d));
+                        }
                         self.thumbs.clear();
+                        crate::cache::trim_in_background(s.cache_limit_mb, self.cache_used.clone());
                         self.osd(t!("Cache geleert"));
                     }
                 });
@@ -1026,7 +1048,7 @@ impl App {
                     self.mark_dirty();
                 }
                 let mut add = false;
-                r.row(ui, t!("Server hinzufügen"), t!("Mit Adresse, Benutzername und Passwort. Velour speichert nur einen Zugangsschlüssel."), |ui| {
+                r.row(ui, t!("Server hinzufügen"), t!("Mit Adresse, Benutzername und Passwort. Velouna speichert nur einen Zugangsschlüssel."), |ui| {
                     if ui.button(t!("Hinzufügen…")).clicked() {
                         add = true;
                     }
@@ -1043,7 +1065,7 @@ impl App {
                     let cur = self.plex.server.as_ref().map(|s| s.id.clone()).or(self.data.plex.server_id.clone()).unwrap_or_default();
                     let cur_name = servers.iter().find(|s| s.id == cur).map(|s| s.name.clone()).unwrap_or_else(|| t!("Auswählen").into());
                     let mut pick: Option<String> = None;
-                    r.row(ui, "Server", t!("Der Server, dessen Mediatheken Velour zeigt."), |ui| {
+                    r.row(ui, "Server", t!("Der Server, dessen Mediatheken Velouna zeigt."), |ui| {
                         egui::ComboBox::from_id_salt("plex-server").selected_text(cur_name).width(220.0).show_ui(ui, |ui| {
                             for sv in &servers {
                                 let label = if sv.backend.media_browser() { format!("{} ({})", sv.name, sv.backend.name()) } else if sv.owned { sv.name.clone() } else { tf!("{} (geteilt von {})", sv.name, sv.owner) };
@@ -1163,6 +1185,9 @@ impl App {
                 }
             }
             SettingsPage::Extensions => {
+                r.section(ui, t!("Plugins"));
+                self.extensions_page(ui, r.filter);
+                ui.add_space(8.0);
                 r.section(ui, t!("Komponenten"));
                 let mpv = self.player.as_ref().map(|p| {
                     let (a, b) = p.mpv.api_version();
@@ -1180,7 +1205,7 @@ impl App {
                 });
                 // Phones have no FFmpeg programs (thumbnails come from mpv there).
                 if !crate::platform::MOBILE {
-                    // Bundled next to velour.exe (installer) or found on PATH; the full
+                    // Bundled next to velouna.exe (installer) or found on PATH; the full
                     // path is in the tooltip.
                     let describe = |p: &std::path::PathBuf| {
                         let bundled = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.to_path_buf())).is_some_and(|d| p.parent() == Some(d.as_path()));
@@ -1196,14 +1221,6 @@ impl App {
                     r.row(ui, t!("FFprobe (Metadaten)"), "", |ui| {
                         ui.label(RichText::new(fp.clone().unwrap_or(t!("nicht gefunden").into())).size(12.0).color(if fp.is_some() { t.text_dim } else { t.danger })).on_hover_text(&fp_path);
                     });
-                }
-                if r.filter.is_empty() {
-                    ui.add_space(10.0);
-                    ui.label(
-                        RichText::new(t!("Add-ons (Skins, Skripte) sind hier gesammelt – interne Module der Engine gehören nicht in diese Liste. Benutzerskripte werden in dieser Version noch nicht geladen."))
-                            .size(12.0)
-                            .color(t.text_faint),
-                    );
                 }
             }
         }
@@ -1817,9 +1834,9 @@ impl App {
             return;
         }
         let intro = if list.len() == 1 {
-            t!("Diese Datei wurde mit Velour abgespielt, ist aber nicht mehr erreichbar – vielleicht wurde sie verschoben oder gelöscht.").to_string()
+            t!("Diese Datei wurde mit Velouna abgespielt, ist aber nicht mehr erreichbar – vielleicht wurde sie verschoben oder gelöscht.").to_string()
         } else {
-            tf!("{} Dateien wurden mit Velour abgespielt, sind aber nicht mehr erreichbar – vielleicht wurden sie verschoben oder gelöscht.", list.len())
+            tf!("{} Dateien wurden mit Velouna abgespielt, sind aber nicht mehr erreichbar – vielleicht wurden sie verschoben oder gelöscht.", list.len())
         };
         ui.label(RichText::new(intro).color(t.text_dim));
         ui.add_space(8.0);
@@ -1879,7 +1896,7 @@ impl App {
             let (r, _) = ui.allocate_exact_size(vec2(80.0, 80.0), Sense::hover());
             widgets::draw_logo(ui.painter(), r, t.accent);
             ui.add_space(8.0);
-            ui.label(RichText::new("Velour Media Player").font(theme::semibold(20.0)));
+            ui.label(RichText::new("Velouna Media Player").font(theme::semibold(20.0)));
             ui.label(RichText::new(format!("Version {}", env!("CARGO_PKG_VERSION"))).color(t.text_dim));
             ui.add_space(8.0);
             ui.label(RichText::new(t!("Ein Video- und Audioplayer in Rust – Oberfläche nach dem Redesign-Konzept: ruhige, dünne Leisten, dicke Suchleiste, Seitenleisten statt Dialoge, Bibliothek direkt neben dem Video.")).color(t.text_dim));
@@ -1897,20 +1914,20 @@ impl App {
         if self.dlg_title(ui, t!("Wiedergabe-Engine nicht gefunden")) {
             return;
         }
-        ui.label(RichText::new(t!("Velour nutzt libmpv zur Wiedergabe. Die Bibliothek konnte nicht geladen werden:")).color(t.text_dim));
+        ui.label(RichText::new(t!("Velouna nutzt libmpv zur Wiedergabe. Die Bibliothek konnte nicht geladen werden:")).color(t.text_dim));
         ui.add_space(4.0);
         ui.label(RichText::new(e).monospace().color(t.danger));
         ui.add_space(8.0);
         ui.label(t!("So behebst du das:"));
         if cfg!(target_os = "linux") {
-            // The packages bring libmpv in /opt/velour/lib (or the per-user
+            // The packages bring libmpv in /opt/velouna/lib (or the per-user
             // folder); missing means a damaged install or a bare binary.
-            ui.label(t!("1. Installiere Velour neu (das Paket bringt libmpv mit) – oder installiere libmpv vom System: sudo apt install libmpv2"));
-            ui.label(t!("2. Alternativ: Umgebungsvariable VELOUR_LIBMPV auf den Pfad von libmpv.so.2 setzen."));
+            ui.label(t!("1. Installiere Velouna neu (das Paket bringt libmpv mit) – oder installiere libmpv vom System: sudo apt install libmpv2"));
+            ui.label(t!("2. Alternativ: Umgebungsvariable VELOUNA_LIBMPV auf den Pfad von libmpv.so.2 setzen."));
         } else {
             ui.label(t!("1. Lade ein „mpv-dev-x86_64“-Paket herunter (z. B. von github.com/shinchiro/mpv-winbuild-cmake/releases)."));
-            ui.label(t!("2. Lege die enthaltene libmpv-2.dll neben velour.exe oder in den Ordner „lib“."));
-            ui.label(t!("3. Alternativ: Umgebungsvariable VELOUR_LIBMPV auf den Pfad der DLL setzen."));
+            ui.label(t!("2. Lege die enthaltene libmpv-2.dll neben velouna.exe oder in den Ordner „lib“."));
+            ui.label(t!("3. Alternativ: Umgebungsvariable VELOUNA_LIBMPV auf den Pfad der DLL setzen."));
         }
     }
 
@@ -1927,7 +1944,7 @@ impl App {
                     let (r, _) = ui.allocate_exact_size(vec2(56.0, 56.0), Sense::hover());
                     widgets::draw_logo(ui.painter(), r, t.accent);
                     ui.add_space(6.0);
-                    ui.label(RichText::new(t!("Willkommen bei Velour")).font(theme::semibold(22.0)));
+                    ui.label(RichText::new(t!("Willkommen bei Velouna")).font(theme::semibold(22.0)));
                     ui.label(RichText::new(t!("Wähle dein bevorzugtes Design und deine Farbe.")).color(t.text_dim));
                     ui.add_space(16.0);
                     ui.horizontal(|ui| {
@@ -1990,7 +2007,7 @@ impl App {
             }
             1 => {
                 ui.label(RichText::new(t!("Die wichtigsten Tastenkürzel")).font(theme::semibold(20.0)));
-                ui.label(RichText::new(t!("Die meisten steuern Velour mit der Tastatur. Alle Kürzel kannst du später unter Einstellungen → Steuerung ändern.")).color(t.text_dim));
+                ui.label(RichText::new(t!("Die meisten steuern Velouna mit der Tastatur. Alle Kürzel kannst du später unter Einstellungen → Steuerung ändern.")).color(t.text_dim));
                 ui.add_space(12.0);
                 let list = [
                     hotkeys::Action::PlayPause,
@@ -2031,13 +2048,13 @@ impl App {
                     RichText::new(if touch {
                         t!("Wähle, welche Bereiche die Leiste unten zeigt. Du kannst das jederzeit in den Einstellungen ändern.")
                     } else {
-                        t!("Wähle, was Velour links anzeigt – passend dazu, wofür du es nutzt. Du kannst das jederzeit unter Einstellungen → Oberfläche ändern.")
+                        t!("Wähle, was Velouna links anzeigt – passend dazu, wofür du es nutzt. Du kannst das jederzeit unter Einstellungen → Oberfläche ändern.")
                     })
                     .color(t.text_dim),
                 );
                 ui.add_space(12.0);
                 let items: Vec<(&str, &str, &str)> = crate::config::NAV_ITEMS.iter().copied().filter(|x| !touch || matches!(x.0, "servers" | "videos" | "music")).collect();
-                // Quick picks for the usual ways to use Velour.
+                // Quick picks for the usual ways to use Velouna.
                 let presets: [(&str, &[&str]); 4] = [
                     (t!("Alles"), &["videos", "music", "tv", "radio", "network", "playlists", "recent", "servers", "pins"]),
                     (t!("Eigene Dateien"), &["videos", "music", "playlists", "recent", "pins", "network"]),
@@ -2106,7 +2123,7 @@ impl App {
                     ui.add_space(8.0);
                 }
                 if crate::platform::MOBILE && !self.storage.media() {
-                    ui.label(RichText::new(t!("Damit Velour deine Videos und Musik findet, braucht es Zugriff auf den Speicher.")).color(t.text_dim));
+                    ui.label(RichText::new(t!("Damit Velouna deine Videos und Musik findet, braucht es Zugriff auf den Speicher.")).color(t.text_dim));
                     if ui.button(t!("Zugriff erlauben")).clicked() {
                         crate::pick::request_storage();
                     }

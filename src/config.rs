@@ -31,7 +31,7 @@ pub enum MissingMedia {
     Keep,
 }
 
-/// What the running Velour does with files handed over by a second start
+/// What the running Velouna does with files handed over by a second start
 /// (single-window mode).
 #[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum HandOver {
@@ -319,7 +319,7 @@ pub struct Settings {
     pub show_remaining_time: bool,
     pub osd_show_keys: bool,
     pub always_on_top: bool,
-    /// Desktop: a second start hands its files to the running Velour
+    /// Desktop: a second start hands its files to the running Velouna
     /// instead of opening another window.
     pub single_instance: bool,
     /// Sidebar entries the user turned off (`nav::ITEMS` ids).
@@ -344,6 +344,12 @@ pub struct Settings {
     pub autoplay_on_open: bool,
     pub default_speed: f64,
     pub repeat: RepeatMode,
+    /// Music shows the visualizer (when a visualizer plugin is on).
+    pub visualizer: bool,
+    /// "plugin-id/preset-id" of the chosen visualizer.
+    pub viz_preset: String,
+    /// Upper limit for thumbnails, song analyses and artwork on disk.
+    pub cache_limit_mb: u32,
     pub play_folder_on_open: bool,
     pub exact_seek: bool,
     // Video
@@ -513,6 +519,9 @@ impl Default for Settings {
             autoplay_on_open: true,
             default_speed: 1.0,
             repeat: RepeatMode::Off,
+            visualizer: true,
+            viz_preset: String::new(),
+            cache_limit_mb: 1024,
             play_folder_on_open: true,
             exact_seek: true,
             hwdec: true,
@@ -553,9 +562,9 @@ impl Default for Settings {
             demuxer_max_mb: 150,
             video_sync_display: false,
             gpu_api: "auto".into(),
-            screenshot_dir: pictures.join("Velour"),
+            screenshot_dir: pictures.join("Velouna"),
             screenshot_format: "png".into(),
-            record_dir: videos.join("Velour"),
+            record_dir: videos.join("Velouna"),
             layout: ControlLayout::default(),
             sidebar_width: 340.0,
             compact_lib_width: 340.0,
@@ -739,6 +748,12 @@ pub struct Data {
     /// Played files that are gone and were kept: reported once only.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub missing_seen: Vec<String>,
+    /// Plugin id -> on/off, granted permissions, settings.
+    #[serde(skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub plugins: std::collections::BTreeMap<String, crate::plugins::State>,
+    /// Plugin repos added by the user (the official one is always there).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub plugin_repos: Vec<crate::plugins::repo::Repo>,
 }
 
 /// Persistent Plex identity. The token itself lives in the Windows credential store.
@@ -755,7 +770,7 @@ pub struct PlexConfig {
     pub media_servers: Vec<MediaServerConfig>,
 }
 
-/// A Jellyfin or Emby server Velour is signed in to.
+/// A Jellyfin or Emby server Velouna is signed in to.
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 #[serde(default)]
 pub struct MediaServerConfig {
@@ -770,16 +785,18 @@ pub struct MediaServerConfig {
 }
 
 /// Folder name the app used while it was still called "VLB".
-const LEGACY_DIR: &str = "VLB";
+/// Earlier names of the app (newest first): Velour until 0.2.x, VLB before.
+pub const LEGACY_NAMES: &[&str] = &["Velour", "VLB"];
 
-/// `<base>/Velour`, moving a pre-rename `<base>/VLB` over on first use.
+/// `<base>/Velouna`, moving the folder of an earlier name over on first use.
 fn app_dir(base: Option<PathBuf>) -> PathBuf {
     let base = base.unwrap_or_else(std::env::temp_dir);
-    let d = base.join("Velour");
+    let d = base.join("Velouna");
     if !d.exists() {
-        let old = base.join(LEGACY_DIR);
-        if old.is_dir() {
-            let _ = std::fs::rename(&old, &d);
+        if let Some(old) = LEGACY_NAMES.iter().map(|n| base.join(n)).find(|p| p.is_dir()) {
+            if std::fs::rename(&old, &d).is_ok() {
+                log::info!("data folder moved from {}", old.display());
+            }
         }
     }
     let _ = std::fs::create_dir_all(&d);
@@ -830,8 +847,10 @@ impl Data {
                 s.layout = ControlLayout::default();
             }
         }
-        if s.screenshot_dir.file_name().is_some_and(|n| n == LEGACY_DIR) {
-            s.screenshot_dir = s.screenshot_dir.with_file_name("Velour");
+        // Default folders named after an earlier app name follow the rename
+        // (the files already in them stay where they are).
+        if s.screenshot_dir.file_name().is_some_and(|n| LEGACY_NAMES.iter().any(|l| n == *l)) {
+            s.screenshot_dir = s.screenshot_dir.with_file_name("Velouna");
         }
         // Android builds before 0.1.3 had no real default folders (home
         // folder fallback): use the shared storage's ones.
@@ -845,18 +864,18 @@ impl Data {
                 }
             }
             if !on_storage(&s.screenshot_dir) {
-                s.screenshot_dir = android_storage("Pictures").join("Velour");
+                s.screenshot_dir = android_storage("Pictures").join("Velouna");
             }
             if !on_storage(&s.record_dir) {
-                s.record_dir = android_storage("Movies").join("Velour");
+                s.record_dir = android_storage("Movies").join("Velouna");
             }
         }
-        // The old default accent was VLC-like orange; Velour's is velvet red.
+        // The old default accent was VLC-like orange; Velouna's is velvet red.
         if s.accent == [0xF0, 0x86, 0x00] {
             s.accent = [0xD8, 0x3F, 0x5C];
         }
-        if s.record_dir.file_name().is_some_and(|n| n == "VLB Aufnahmen") {
-            s.record_dir = s.record_dir.with_file_name("Velour");
+        if s.record_dir.file_name().is_some_and(|n| n == "VLB Aufnahmen" || n == "Velour") {
+            s.record_dir = s.record_dir.with_file_name("Velouna");
         }
         if d.eq_custom.len() != 10 {
             d.eq_custom = vec![0.0; 10];
@@ -888,4 +907,22 @@ pub fn now_secs() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn data_folder_follows_rename() {
+        let base = std::env::temp_dir().join(format!("velouna-rename-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(base.join("Velour")).unwrap();
+        std::fs::write(base.join("Velour").join("config.json"), "{}").unwrap();
+        let d = super::app_dir(Some(base.clone()));
+        assert_eq!(d, base.join("Velouna"));
+        assert!(d.join("config.json").is_file());
+        assert!(!base.join("Velour").exists());
+        // a second start leaves it alone
+        assert_eq!(super::app_dir(Some(base.clone())), d);
+        let _ = std::fs::remove_dir_all(&base);
+    }
 }

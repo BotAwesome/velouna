@@ -1,4 +1,4 @@
-// The Velour mark: two velvet drapes that fall together into a V.
+// The Velouna mark: two velvet drapes that fall together into a V.
 // Shared by the app (window icon, in-app logo) and build.rs (Windows .ico),
 // so it only uses std and plain `//` comments (it is `include!`d by build.rs).
 

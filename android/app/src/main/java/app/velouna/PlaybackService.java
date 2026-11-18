@@ -1,4 +1,4 @@
-package app.velour;
+package app.velouna;
 
 import android.app.Notification;
 import android.app.NotificationChannel;
@@ -16,18 +16,18 @@ import android.os.IBinder;
 
 /**
  * Foreground service behind the player notification: keeps playback
- * running while Velour is in the background and shows the media controls
+ * running while Velouna is in the background and shows the media controls
  * (notification shade, lock screen). The media session itself lives in
- * {@link VelourActivity}; this only owns the notification.
+ * {@link VelounaActivity}; this only owns the notification.
  */
 public class PlaybackService extends Service {
 
     static final String CHANNEL = "playback";
     static final int ID = 1;
-    static final String ACTION_PREV = "app.velour.PREV";
-    static final String ACTION_TOGGLE = "app.velour.TOGGLE";
-    static final String ACTION_NEXT = "app.velour.NEXT";
-    static final String ACTION_STOP = "app.velour.STOP";
+    static final String ACTION_PREV = "app.velouna.PREV";
+    static final String ACTION_TOGGLE = "app.velouna.TOGGLE";
+    static final String ACTION_NEXT = "app.velouna.NEXT";
+    static final String ACTION_STOP = "app.velouna.STOP";
 
     /** Labels from the Rust side (UI language): prev, play, pause, next, channel. */
     static volatile String[] labels = {"Previous", "Play", "Pause", "Next", "Playback"};
@@ -90,7 +90,7 @@ public class PlaybackService extends Service {
 
     private static Notification build(Context c, MediaSession.Token token, String title, String text, boolean playing, Bitmap art) {
         String[] l = labels;
-        Intent open = new Intent(c, VelourActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        Intent open = new Intent(c, VelounaActivity.class).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
         PendingIntent content = PendingIntent.getActivity(c, 0, open, PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification.Builder b = new Notification.Builder(c, CHANNEL)
                 .setSmallIcon(R.drawable.ic_notification)
@@ -115,14 +115,14 @@ public class PlaybackService extends Service {
     public int onStartCommand(Intent intent, int flags, int startId) {
         String a = intent == null ? null : intent.getAction();
         if (ACTION_PREV.equals(a)) {
-            VelourActivity.mediaAction(VelourActivity.MEDIA_PREV, 0);
+            VelounaActivity.mediaAction(VelounaActivity.MEDIA_PREV, 0);
         } else if (ACTION_TOGGLE.equals(a)) {
-            VelourActivity.mediaAction(VelourActivity.MEDIA_TOGGLE, 0);
+            VelounaActivity.mediaAction(VelounaActivity.MEDIA_TOGGLE, 0);
         } else if (ACTION_NEXT.equals(a)) {
-            VelourActivity.mediaAction(VelourActivity.MEDIA_NEXT, 0);
+            VelounaActivity.mediaAction(VelounaActivity.MEDIA_NEXT, 0);
         } else if (ACTION_STOP.equals(a)) {
             // Swiped away while paused.
-            VelourActivity.mediaAction(VelourActivity.MEDIA_PAUSE, 0);
+            VelounaActivity.mediaAction(VelounaActivity.MEDIA_PAUSE, 0);
             current = null;
             foreground = false;
             stopSelf();
@@ -164,7 +164,7 @@ public class PlaybackService extends Service {
     /** Swiped out of the recent apps: stop playing, nothing left to control. */
     @Override
     public void onTaskRemoved(Intent rootIntent) {
-        VelourActivity.mediaAction(VelourActivity.MEDIA_PAUSE, 0);
+        VelounaActivity.mediaAction(VelounaActivity.MEDIA_PAUSE, 0);
         hide(this);
         super.onTaskRemoved(rootIntent);
     }

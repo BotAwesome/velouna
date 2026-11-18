@@ -3,7 +3,7 @@
 //!
 //! - **Live metrics:** sizes come from `layout.json` in the data folder and
 //!   are re-read whenever the file changes, without a rebuild or restart.
-//! - **Phone simulator:** `velour.exe --phone` opens a phone-sized window
+//! - **Phone simulator:** `velouna.exe --phone` opens a phone-sized window
 //!   with simulated system bars; F9 rotates it.
 
 use eframe::egui::{self, Rect, vec2};

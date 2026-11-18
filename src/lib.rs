@@ -1,12 +1,12 @@
-//! Velour as a library: the Windows exe (src/main.rs) and the Android
-//! library (android/velour-android) both start the same app from here.
+//! Velouna as a library: the Windows exe (src/main.rs) and the Android
+//! library (android/velouna-android) both start the same app from here.
 
 #[macro_use]
-extern crate velour_i18n_macros;
+extern crate velouna_i18n_macros;
 
 // On Android the file dialog API comes from a stand-in crate under the same name.
 #[cfg(target_os = "android")]
-extern crate velour_rfd_shim as rfd;
+extern crate velouna_rfd_shim as rfd;
 
 mod app;
 mod config;
@@ -24,6 +24,7 @@ mod mobile;
 mod mpv;
 mod pick;
 mod platform;
+pub mod plugins;
 mod player;
 mod plex;
 mod radio;
@@ -36,14 +37,19 @@ mod ui_plex_drawer;
 mod ui_panels;
 mod ui_player;
 mod ui_plex;
+mod ui_plugins;
 mod ui_update;
+mod cache;
+mod ui_queue;
+mod ui_viz;
 mod update;
 mod video;
+mod viz;
 mod widgets;
 
 use eframe::egui;
 
-/// The Velour mark as window/taskbar icon.
+/// The Velouna mark as window/taskbar icon.
 fn app_icon() -> egui::IconData {
     let n = 64usize;
     egui::IconData { rgba: logo::logo_rasterize(n), width: n as u32, height: n as u32 }
@@ -144,7 +150,7 @@ fn work_area() -> Option<egui::Rect> {
 
 /// Desktop entry point; `files` are paths/URLs from the command line.
 /// `phone` opens the phone simulator (touch layout, F9 rotates).
-/// Desktop log: stderr and `<cache>/velour/velour.log` (new each start).
+/// Desktop log: stderr and `<cache>/velouna/velouna.log` (new each start).
 #[cfg(not(target_os = "android"))]
 mod desktop_log {
     use std::io::Write;
@@ -152,7 +158,7 @@ mod desktop_log {
     struct Logger(Mutex<Option<std::fs::File>>);
     impl log::Log for Logger {
         fn enabled(&self, m: &log::Metadata) -> bool {
-            m.level() <= log::Level::Info && (m.target().starts_with("velour") || m.level() <= log::Level::Warn)
+            m.level() <= log::Level::Info && (m.target().starts_with("velouna") || m.level() <= log::Level::Warn)
         }
         fn log(&self, r: &log::Record) {
             if !self.enabled(r.metadata()) {
@@ -169,16 +175,16 @@ mod desktop_log {
         fn flush(&self) {}
     }
     pub fn init() {
-        let dir = crate::platform::cache_dir_override().or_else(|| dirs::cache_dir().map(|d| d.join("velour")));
+        let dir = crate::platform::cache_dir_override().or_else(|| dirs::cache_dir().map(|d| d.join("velouna")));
         let file = dir.and_then(|d| {
             let _ = std::fs::create_dir_all(&d);
-            std::fs::File::create(d.join("velour.log")).ok()
+            std::fs::File::create(d.join("velouna.log")).ok()
         });
         let logger: &'static Logger = Box::leak(Box::new(Logger(Mutex::new(file))));
         if log::set_logger(logger).is_ok() {
             log::set_max_level(log::LevelFilter::Info);
         }
-        log::info!("Velour {} ({} {})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+        log::info!("Velouna {} ({} {})", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
     }
 }
 
@@ -217,7 +223,7 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
         set_cert_bundle();
         update::linux::init();
     }
-    // Another Velour is running: it takes the files, this one quits. The
+    // Another Velouna is running: it takes the files, this one quits. The
     // phone simulator is a development tool and always opens its own window.
     #[cfg(not(target_os = "android"))]
     let note = match if phone { instance::Start::Run(None) } else { instance::hand_over_or_listen(&files) } {
@@ -234,15 +240,15 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
     mobile::set_simulator(phone);
     let size = if phone { [390.0, 800.0] } else { [1280.0, 760.0] };
     let mut viewport = egui::ViewportBuilder::default()
-        .with_title(if phone { "Velour – Handy-Simulator (F9 dreht)" } else { "Velour" })
+        .with_title(if phone { "Velouna – Handy-Simulator (F9 dreht)" } else { "Velouna" })
         .with_inner_size(size)
         .with_min_inner_size([300.0, 300.0])
         .with_decorations(false)
         .with_resizable(true)
         .with_drag_and_drop(true)
         .with_icon(app_icon())
-        // Linux: ties the window to velour.desktop (icon, dock, "Open with").
-        .with_app_id("velour");
+        // Linux: ties the window to velouna.desktop (icon, dock, "Open with").
+        .with_app_id("velouna");
     let mut centered = !phone;
     if phone {
         // Top left, clear of the taskbar.
@@ -260,25 +266,25 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
     }
     #[allow(unused_mut)]
     let mut options = eframe::NativeOptions { viewport, centered, ..base_options() };
-    // winit 0.30 has no file drag & drop on Wayland; VELOUR_X11=1 runs
-    // Velour through XWayland, where dropping files works.
+    // winit 0.30 has no file drag & drop on Wayland; VELOUNA_X11=1 runs
+    // Velouna through XWayland, where dropping files works.
     #[cfg(target_os = "linux")]
-    if std::env::var_os("VELOUR_X11").is_some_and(|v| v != "0") && std::env::var_os("DISPLAY").is_some() {
-        log::info!("VELOUR_X11: using X11 (XWayland)");
+    if std::env::var_os("VELOUNA_X11").is_some_and(|v| v != "0") && std::env::var_os("DISPLAY").is_some() {
+        log::info!("VELOUNA_X11: using X11 (XWayland)");
         options.event_loop_builder = Some(Box::new(|b| {
             use winit::platform::x11::EventLoopBuilderExtX11;
             b.with_x11();
         }));
     }
-    eframe::run_native("Velour", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, files)))))
+    eframe::run_native("Velouna", options, Box::new(move |cc| Ok(Box::new(app::App::new(cc, files)))))
 }
 
-/// Android entry point, called from `android_main` in the velour-android crate.
+/// Android entry point, called from `android_main` in the velouna-android crate.
 #[cfg(target_os = "android")]
 pub fn run_android(android_app: winit::platform::android::activity::AndroidApp) {
     platform::android::init(&android_app);
     let options = eframe::NativeOptions { android_app: Some(android_app), ..base_options() };
-    if let Err(e) = eframe::run_native("Velour", options, Box::new(|cc| Ok(Box::new(app::App::new(cc, Vec::new()))))) {
+    if let Err(e) = eframe::run_native("Velouna", options, Box::new(|cc| Ok(Box::new(app::App::new(cc, Vec::new()))))) {
         log::error!("eframe: {e}");
     }
 }

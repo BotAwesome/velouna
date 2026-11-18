@@ -9,7 +9,6 @@ pub struct Track {
     pub kind: String,
     pub title: Option<String>,
     pub lang: Option<String>,
-    pub codec: String,
     pub selected: bool,
     pub external: bool,
     pub external_filename: Option<String>,
@@ -19,7 +18,6 @@ pub struct Track {
     pub channels: Option<i64>,
     pub w: Option<i64>,
     pub h: Option<i64>,
-    pub default: bool,
     pub forced: bool,
 }
 
@@ -51,7 +49,6 @@ pub struct PlaylistEntry {
     pub filename: String,
     pub title: Option<String>,
     pub current: bool,
-    pub id: i64,
 }
 
 impl PlaylistEntry {
@@ -295,7 +292,6 @@ impl PlayerState {
                         kind: t.str_of("type").unwrap_or_default(),
                         title: t.str_of("title"),
                         lang: t.str_of("lang"),
-                        codec: t.str_of("codec").unwrap_or_default(),
                         selected: t.bool_of("selected"),
                         external: t.bool_of("external"),
                         external_filename: t.str_of("external-filename"),
@@ -305,7 +301,6 @@ impl PlayerState {
                         channels: t.i64_of("demux-channel-count"),
                         w: t.i64_of("demux-w"),
                         h: t.i64_of("demux-h"),
-                        default: t.bool_of("default"),
                         forced: t.bool_of("forced"),
                     })
                     .collect();
@@ -318,7 +313,6 @@ impl PlayerState {
                             filename: e.str_of("filename").unwrap_or_default(),
                             title: e.str_of("title"),
                             current: e.bool_of("current"),
-                            id: e.i64_of("id").unwrap_or(0),
                         })
                         .collect(),
                 );
@@ -452,14 +446,6 @@ impl PlayerState {
             .find(|(k, _)| k.eq_ignore_ascii_case(key))
             .map(|(_, v)| v.as_str())
             .filter(|s| !s.is_empty())
-    }
-
-    pub fn current_chapter_title(&self) -> Option<&str> {
-        if self.chapter >= 0 {
-            self.chapters.get(self.chapter as usize).map(|c| c.title.as_str())
-        } else {
-            None
-        }
     }
 }
 

@@ -137,8 +137,8 @@ impl App {
         dlg_width(ui, 540.0);
         let status = self.update.status.clone();
         let title = match &status {
-            Status::Available(r) | Status::Downloading(r) | Status::Ready(r, _) | Status::Installing(r) => tf!("Velour {} ist verfügbar", r.version),
-            Status::UpToDate => t!("Velour ist aktuell").to_string(),
+            Status::Available(r) | Status::Downloading(r) | Status::Ready(r, _) | Status::Installing(r) => tf!("Velouna {} ist verfügbar", r.version),
+            Status::UpToDate => t!("Velouna ist aktuell").to_string(),
             Status::Failed(_) => t!("Update fehlgeschlagen").to_string(),
             Status::Idle | Status::Checking => t!("Nach Updates suchen").to_string(),
         };
@@ -231,7 +231,7 @@ impl App {
                 });
             }
             Status::Ready(..) => {
-                // Android: Velour needs "install unknown apps" once; ask for it
+                // Android: Velouna needs "install unknown apps" once; ask for it
                 // here instead of letting the system dialog block the install.
                 #[cfg(target_os = "android")]
                 let allowed = crate::platform::android::can_install_packages();
@@ -239,7 +239,7 @@ impl App {
                 let allowed = true;
                 if !allowed {
                     ui.label(
-                        RichText::new(t!("Damit Velour sich aktualisieren kann, musst du es einmal erlauben: Tippe auf „Erlauben“ und schalte „Apps aus dieser Quelle zulassen“ ein. Danach geht es hier weiter."))
+                        RichText::new(t!("Damit Velouna sich aktualisieren kann, musst du es einmal erlauben: Tippe auf „Erlauben“ und schalte „Apps aus dieser Quelle zulassen“ ein. Danach geht es hier weiter."))
                             .size(12.5)
                             .color(t.text_dim),
                     );
@@ -259,13 +259,13 @@ impl App {
                     return;
                 }
                 let (label, info) = if crate::platform::MOBILE {
-                    (t!("Installieren"), t!("Android fragt gleich nach, ob Velour aktualisiert werden darf."))
+                    (t!("Installieren"), t!("Android fragt gleich nach, ob Velouna aktualisiert werden darf."))
                 } else {
-                    (t!("Installieren und neu starten"), t!("Velour wird kurz geschlossen und startet danach von selbst neu."))
+                    (t!("Installieren und neu starten"), t!("Velouna wird kurz geschlossen und startet danach von selbst neu."))
                 };
                 #[cfg(target_os = "linux")]
                 let info = if crate::update::linux_deb() {
-                    t!("Zum Installieren des Pakets fragt Linux gleich nach deinem Passwort. Danach startet Velour von selbst neu.")
+                    t!("Zum Installieren des Pakets fragt Linux gleich nach deinem Passwort. Danach startet Velouna von selbst neu.")
                 } else {
                     info
                 };
@@ -273,7 +273,7 @@ impl App {
                 ui.add_space(8.0);
                 ui.horizontal(|ui| {
                     if widgets::accent_button(ui, t, label).clicked() && self.update.install() {
-                        // Windows: the setup waits for Velour to quit.
+                        // Windows: the setup waits for Velouna to quit.
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                     }
                     if widgets::ghost_button(ui, t, t!("Später")).clicked() {
@@ -295,7 +295,7 @@ impl App {
     pub(crate) fn dlg_whats_new(&mut self, ui: &mut Ui, notes: String) {
         let t = self.t;
         dlg_width(ui, 540.0);
-        if self.dlg_title(ui, &tf!("Neu in Velour {}", update::CURRENT)) {
+        if self.dlg_title(ui, &tf!("Neu in Velouna {}", update::CURRENT)) {
             return;
         }
         let max_notes = (ui.ctx().screen_rect().height() * 0.5).clamp(160.0, 380.0);
@@ -315,7 +315,7 @@ impl App {
     pub(crate) fn update_settings_status(&self) -> String {
         match &self.update.status {
             Status::Checking => t!("Suche nach Updates…").to_string(),
-            Status::UpToDate => t!("Velour ist aktuell.").to_string(),
+            Status::UpToDate => t!("Velouna ist aktuell.").to_string(),
             Status::Available(r) | Status::Ready(r, _) => tf!("Version {} ist verfügbar.", r.version),
             Status::Downloading(_) => t!("Update wird heruntergeladen…").to_string(),
             Status::Installing(_) => t!("Update wird installiert…").to_string(),

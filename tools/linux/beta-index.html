@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>Velour Linux Beta</title>
+<title>Velouna Linux Beta</title>
 <style>
 :root { color-scheme: dark; --bg: #121212; --surface: #1f1f1f; --border: #2c2c2c; --text: #e8e8e8; --dim: #9a9a9a; --accent: #d83f5c; }
 * { box-sizing: border-box; }
@@ -25,11 +25,11 @@ p, li { color: var(--dim); } code { color: var(--text); }
 </head>
 <body>
 <main>
-  <h1>Velour für <span>Linux</span> – Beta</h1>
+  <h1>Velouna für <span>Linux</span> – Beta</h1>
   <p class="sub">Version __VERSION__ · gebaut __DATE__ · nur zum Testen, nicht öffentlich verlinkt</p>
 
   <div class="dl">
-    <a href="__DEB__"><span><b>__DEB__</b><small>Pop!_OS, Ubuntu, Debian, Mint · installiert nach /opt/velour</small></span><span class="go">Download</span></a>
+    <a href="__DEB__"><span><b>__DEB__</b><small>Pop!_OS, Ubuntu, Debian, Mint · installiert nach /opt/velouna</small></span><span class="go">Download</span></a>
     <a href="__TGZ__"><span><b>__TGZ__</b><small>jede Distribution (glibc 2.35+) · entpacken und <code>./install.sh</code></small></span><span class="go">Download</span></a>
     <a href="SHA256SUMS"><span><b>SHA256SUMS</b><small>Prüfsummen</small></span><span class="go">Ansehen</span></a>
   </div>
@@ -37,24 +37,24 @@ p, li { color: var(--dim); } code { color: var(--text); }
   <h2>Pop!_OS / Ubuntu (.deb)</h2>
   <pre>cd ~/Downloads
 sudo apt install ./__DEB__</pre>
-  <p>Alles ist dabei: mpv, FFmpeg, ffprobe und yt-dlp. Danach steht Velour im App-Menü. Entfernen: <code>sudo apt remove velour</code></p>
+  <p>Alles ist dabei: mpv, FFmpeg, ffprobe und yt-dlp. Danach steht Velouna im App-Menü. Entfernen: <code>sudo apt remove velouna</code></p>
 
   <h2>Andere Distributionen (.tar.gz)</h2>
   <pre>tar xzf __TGZ__
 cd __TGZDIR__
 ./install.sh</pre>
-  <p>Installiert nach <code>~/.local/share/velour</code>, kein Root nötig. Entfernen: <code>./uninstall.sh</code></p>
+  <p>Installiert nach <code>~/.local/share/velouna</code>, kein Root nötig. Entfernen: <code>./uninstall.sh</code></p>
 
   <h2>Was testen?</h2>
   <ul>
     <li>Startet das Fenster (Wayland/COSMIC und X11)? Ziehen, Größe ändern, Maximieren</li>
     <li>Video abspielen – Bild, Ton, Hardware-Dekodierung, Vorschaubilder im Seek-Bar (braucht <code>ffmpeg</code>)</li>
-    <li>Datei- und Ordnerdialog, „Öffnen mit“ aus dem Dateimanager, Drag &amp; Drop (unter Wayland/COSMIC geht das noch nicht – zum Ausprobieren mit <code>VELOUR_X11=1 velour</code> starten)</li>
+    <li>Datei- und Ordnerdialog, „Öffnen mit“ aus dem Dateimanager, Drag &amp; Drop (unter Wayland/COSMIC geht das noch nicht – zum Ausprobieren mit <code>VELOUNA_X11=1 velouna</code> starten)</li>
     <li>Bildschirm bleibt an, solange ein Video läuft</li>
     <li>Plex-Anmeldung (wird im Schlüsselbund gespeichert), TV, Radio</li>
     <li>„Im Dateimanager zeigen“, Links öffnen</li>
   </ul>
-  <p class="note">Wenn etwas nicht geht: im Terminal <code>velour</code> starten und die Ausgabe schicken – oder die Datei <code>~/.cache/velour/velour.log</code>.</p>
+  <p class="note">Wenn etwas nicht geht: im Terminal <code>velouna</code> starten und die Ausgabe schicken – oder die Datei <code>~/.cache/velouna/velouna.log</code>.</p>
 </main>
 </body>
 </html>

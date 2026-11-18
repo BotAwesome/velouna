@@ -1,5 +1,5 @@
 //! Updates from GitHub releases: the newest release's text is the changelog,
-//! its assets are the Windows setup (`Velour-Setup-<v>.exe`) and the Android
+//! its assets are the Windows setup (`Velouna-Setup-<v>.exe`) and the Android
 //! APK. Downloaded into the cache, checked against GitHub's SHA-256 digest,
 //! then handed to the installer (Windows: setup `--quiet --relaunch`;
 //! Android: the system package installer; Linux: the .deb through
@@ -12,14 +12,14 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, channel};
 use std::time::Duration;
 
-pub const REPO: &str = "BotAwesome/velour";
+pub const REPO: &str = "BotAwesome/velouna";
 pub const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
-/// API root. For tests `VELOUR_UPDATE_API` or a file `update-api.txt` in
+/// API root. For tests `VELOUNA_UPDATE_API` or a file `update-api.txt` in
 /// the data folder points it elsewhere (on a phone only `adb run-as` with a
 /// debug build can put that file there).
 fn api() -> String {
-    if let Ok(v) = std::env::var("VELOUR_UPDATE_API") {
+    if let Ok(v) = std::env::var("VELOUNA_UPDATE_API") {
         return v;
     }
     if let Ok(v) = std::fs::read_to_string(crate::config::data_dir().join("update-api.txt")) {
@@ -81,6 +81,7 @@ pub struct Updater {
     /// user is not watching something.
     pub prompt: bool,
     /// Linux: the update is installed; start the new version and quit.
+    #[cfg(target_os = "linux")]
     pub restart: bool,
     rx: Option<Receiver<Msg>>,
     pub done: Arc<AtomicU64>,
@@ -95,6 +96,7 @@ impl Default for Updater {
             manual: false,
             auto_done: false,
             prompt: false,
+            #[cfg(target_os = "linux")]
             restart: false,
             rx: None,
             done: Arc::new(AtomicU64::new(0)),
@@ -120,14 +122,14 @@ pub fn newer(a: &str, than: &str) -> bool {
 }
 
 fn agent() -> ureq::Agent {
-    ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(10)).timeout_read(Duration::from_secs(30)).user_agent(&format!("Velour/{CURRENT}")).build()
+    ureq::AgentBuilder::new().timeout_connect(Duration::from_secs(10)).timeout_read(Duration::from_secs(30)).user_agent(&format!("Velouna/{CURRENT}")).build()
 }
 
-/// Linux: installed from the .deb (in /opt/velour) rather than the per-user
+/// Linux: installed from the .deb (in /opt/velouna) rather than the per-user
 /// tar.gz.
 #[cfg(target_os = "linux")]
 pub fn linux_deb() -> bool {
-    std::env::current_exe().is_ok_and(|p| p.starts_with("/opt/velour"))
+    std::env::current_exe().is_ok_and(|p| p.starts_with("/opt/velouna"))
 }
 
 /// Whether a release file is the one for this platform and install type.
@@ -340,7 +342,7 @@ impl Updater {
                     // used the debug key) – only a fresh install helps.
                     5 => {
                         self.status = Status::Failed(
-                            t!("Diese Version ist anders signiert und lässt sich nicht über die installierte Version installieren. Deinstalliere Velour und installiere die APK von GitHub neu.").to_string(),
+                            t!("Diese Version ist anders signiert und lässt sich nicht über die installierte Version installieren. Deinstalliere Velouna und installiere die APK von GitHub neu.").to_string(),
                         )
                     }
                     _ => self.status = Status::Failed(if msg.is_empty() { format!("PackageInstaller {code}") } else { msg }),
@@ -426,7 +428,7 @@ pub mod linux {
     /// package has replaced it, /proc/self/exe ends in " (deleted)".
     fn exe() -> PathBuf {
         static EXE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
-        EXE.get_or_init(|| std::env::current_exe().unwrap_or_else(|_| "velour".into())).clone()
+        EXE.get_or_init(|| std::env::current_exe().unwrap_or_else(|_| "velouna".into())).clone()
     }
 
     /// Remembers the executable path before anything replaces it.

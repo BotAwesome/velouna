@@ -27,9 +27,11 @@ pub enum Pick {
     RecordDir,
     /// New playlist with these items so far.
     PlaylistFiles(Vec<String>),
+    /// A `.velounaplugin` file to install.
+    Plugin,
 }
 
-/// What Velour may read on the device (desktop: everything).
+/// What Velouna may read on the device (desktop: everything).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct StorageAccess {
     pub videos: bool,
@@ -80,7 +82,8 @@ impl App {
             match &p {
                 Pick::OpenFiles | Pick::QueueFiles | Pick::PlaylistFiles(_) => pick(PickMode::Media, true),
                 Pick::OpenFolder | Pick::QueueFolder | Pick::LibraryFolder { .. } | Pick::ScreenshotDir | Pick::RecordDir => pick(PickMode::Folder, false),
-                Pick::Subtitle | Pick::SubtitlesFor(SubScope::File) => pick(PickMode::Subtitles, false),
+                // The subtitle mode is the picker for any single file.
+                Pick::Subtitle | Pick::SubtitlesFor(SubScope::File) | Pick::Plugin => pick(PickMode::Subtitles, false),
                 Pick::SubtitlesFor(_) => pick(PickMode::Subtitles, true),
             }
             self.pending_pick = Some(p);
@@ -130,6 +133,12 @@ impl App {
             }
             Pick::LibraryFolder { .. } => one(rfd::FileDialog::new().set_title(t!("Ordner zur Bibliothek hinzufügen")).pick_folder()),
             Pick::PlaylistFiles(_) => rfd::FileDialog::new().pick_files().unwrap_or_default(),
+            Pick::Plugin => one(
+                rfd::FileDialog::new()
+                    .set_title(t!("Plugin installieren"))
+                    .add_filter(t!("Velouna-Plugin"), &[crate::plugins::EXT])
+                    .pick_file(),
+            ),
         };
         picked.into_iter().map(|p| p.to_string_lossy().to_string()).collect()
     }
@@ -182,7 +191,7 @@ impl App {
 
     /// Does what the pick was for.
     pub fn picked(&mut self, p: Pick, paths: Vec<String>) {
-        // "!name": a file Android lets Velour see but not open.
+        // "!name": a file Android lets Velouna see but not open.
         let (bad, paths): (Vec<String>, Vec<String>) = paths.into_iter().partition(|s| s.starts_with('!'));
         if let Some(b) = bad.first() {
             self.osd(tf!("Kann nicht geöffnet werden: {}", &b[1..]));
@@ -192,6 +201,7 @@ impl App {
         }
         let first = paths[0].clone();
         match p {
+            Pick::Plugin => self.offer_plugin(std::path::Path::new(&first)),
             Pick::OpenFiles | Pick::OpenFolder => self.open_paths(paths),
             Pick::QueueFiles => self.enqueue(&paths),
             Pick::QueueFolder => {
