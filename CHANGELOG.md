@@ -3,7 +3,7 @@
 All notable changes to Velouna (called Velour up to 0.2.1). The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
-## [0.4.0] - 2026-11-19
+## [0.4.0] - 2026-11-18
 
 ### Plugins that do things
 - Lua plugins: small scripts that react to what plays, add entries to the player menu and
