@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Velour – a blazing fast media player for Windows, Linux and Android</title>
-<meta name="description" content="Velour is a blazing fast, free media player for Windows, Linux and Android, built on mpv. Double-click a video and the picture is there in about half a second. Your videos and music, your Plex, Jellyfin or Emby server and thousands of free TV and radio stations in one player.">
+<title>Velouna – a blazing fast media player for Windows, Linux and Android</title>
+<meta name="description" content="Velouna is a blazing fast, free media player for Windows, Linux and Android, built on mpv. Double-click a video and the picture is there in about half a second. Your videos and music, your Plex, Jellyfin or Emby server and thousands of free TV and radio stations in one player, with music visualizers and plugins.">
 <meta name="theme-color" content="#0f0d10">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Velour – a calm media player">
+<meta property="og:title" content="Velouna – a calm media player">
 <meta property="og:description" content="A blazing fast media player: picture in half a second. Videos, music, Plex, Jellyfin, Emby, free TV and radio. For Windows, Linux and Android, built on mpv.">
-<meta property="og:image" content="https://botawesome.github.io/velour/screenshots/desktop-player.jpg">
+<meta property="og:image" content="https://botawesome.github.io/velouna/screenshots/desktop-player.jpg">
 <meta name="twitter:card" content="summary_large_image">
 <script>document.documentElement.classList.add("js")</script>
 <style>
@@ -219,6 +219,50 @@ p { margin: 0; }
 .trio .p2 { left: 31%; width: 38%; transform: translateY(-50%); z-index: 3; }
 .trio .p3 { right: 3%; transform: translateY(-46%) rotate(7deg); z-index: 2; }
 
+/* ===================================================================== music */
+.visual.music .screen { box-shadow: 0 0 0 1px rgba(0, 0, 0, .6), 0 50px 100px -40px rgba(0, 0, 0, .95), 0 30px 90px -40px rgba(216, 63, 92, .35); }
+.songmap {
+  position: relative; width: min(760px, 78%); margin: -86px 4% 0 auto; padding: 18px 22px 16px;
+  border-radius: 16px; background: rgba(26, 23, 27, .94); border: 1px solid var(--line-strong);
+  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, .95); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+}
+.songmap-head { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; flex-wrap: wrap; margin-bottom: 12px; }
+.songmap-head b { font-weight: 600; font-size: 15px; }
+.songmap-head small { color: var(--text-3); font: 12.5px/1.3 var(--mono); }
+.songmap-svg { display: block; width: 100%; height: 64px; }
+.songmap-svg .kicks { stroke: rgba(244, 241, 243, .5); stroke-width: 1.2; fill: none; vector-effect: non-scaling-stroke; }
+.s-calm { fill: rgba(255, 255, 255, .08); }
+.s-groove { fill: rgba(216, 63, 92, .3); }
+.s-build { fill: url(#buildgrad); }
+.s-drop { fill: var(--accent); }
+.songmap-key { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 12px; color: var(--text-3); font-size: 12.5px; }
+.songmap-key span { display: inline-flex; align-items: center; gap: 7px; }
+.songmap-key span::before { content: ""; width: 14px; height: 8px; border-radius: 3px; }
+.songmap-key .k-calm::before { background: rgba(255, 255, 255, .12); }
+.songmap-key .k-groove::before { background: rgba(216, 63, 92, .3); }
+.songmap-key .k-build::before { background: linear-gradient(to right, rgba(216, 63, 92, .3), var(--accent)); }
+.songmap-key .k-drop::before { background: var(--accent); }
+.songmap-key .k-kick::before { width: 2px; height: 12px; border-radius: 1px; background: rgba(244, 241, 243, .5); }
+
+/* ===================================================================== plugins */
+.visual.plug { padding-bottom: 40px; }
+.visual.plug .screen { width: 88%; margin-left: auto; }
+.screen.plug-shot img { aspect-ratio: 1127 / 800; }
+.code-card {
+  position: absolute; left: -28px; bottom: -24px; width: min(470px, 66%); margin: 0; border-radius: 14px; overflow: hidden;
+  background: #141115; border: 1px solid var(--line-strong); box-shadow: 0 40px 80px -24px rgba(0, 0, 0, .95);
+}
+.code-tab { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--line); color: var(--text-3); font: 12.5px/1 var(--mono); }
+.code-tab i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 3px var(--accent-wash); }
+.code-card pre { margin: 0; padding: 14px 16px 16px; overflow-x: auto; font: 11.5px/1.65 var(--mono); color: var(--text-2); white-space: pre; }
+.code-card .c { color: var(--text-3); }
+.code-card .k { color: #e8566f; }
+.code-card .f { color: #f2c27a; }
+.code-card .n { color: #8fd3ff; }
+.row-links { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 10px 22px; }
+.row-links a { color: var(--text); font-weight: 600; text-decoration: none; border-bottom: 1px solid rgba(216, 63, 92, .5); padding-bottom: 2px; }
+.row-links a:hover { border-color: var(--accent); }
+
 /* ===================================================================== speed */
 .clock {
   border-radius: var(--r-lg); background: var(--bg-raise); border: 1px solid var(--line-strong);
@@ -415,6 +459,8 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
   .foot { grid-template-columns: 1fr 1fr; }
   .foot > div:first-child { grid-column: 1 / -1; }
   .badge-float, .visual.live .badge-float { left: 16px; }
+  .songmap { width: 92%; margin-top: -40px; }
+  .code-card { left: 12px; }
   .thumbs { justify-content: flex-start; overflow-x: auto; padding: 6px 6px 10px; scrollbar-width: none; }
   .thumbs::-webkit-scrollbar { display: none; }
 }
@@ -444,6 +490,10 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
   .faq details p, .faq summary { padding-right: 36px; }
   .foot { grid-template-columns: 1fr 1fr; }
   .badge-float { display: none; }
+  .songmap { width: 100%; margin: 16px 0 0; padding: 14px 14px 12px; }
+  .songmap-svg { height: 48px; }
+  .visual.plug .screen { width: 100%; }
+  .code-card { position: relative; left: auto; bottom: auto; width: 100%; margin-top: 16px; }
 }
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
@@ -471,17 +521,18 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
 
 <nav class="nav" id="nav" aria-label="Main">
   <div class="wrap">
-    <a class="brand" href="#top" aria-label="Velour, back to top"><svg aria-hidden="true"><use href="#i-logo"/></svg>Velour</a>
+    <a class="brand" href="#top" aria-label="Velouna, back to top"><svg aria-hidden="true"><use href="#i-logo"/></svg>Velouna</a>
     <div class="nav-links">
       <a href="#speed">Speed</a>
       <a href="#player">Player</a>
+      <a href="#music">Music</a>
       <a href="#live">TV &amp; radio</a>
+      <a href="#plugins">Plugins</a>
       <a href="#android">Android</a>
-      <a href="#screenshots">Screenshots</a>
       <a href="#faq">FAQ</a>
     </div>
     <div class="nav-end">
-      <a class="icon-link" href="https://github.com/BotAwesome/velour" aria-label="Velour on GitHub"><svg><use href="#i-github"/></svg></a>
+      <a class="icon-link" href="https://github.com/BotAwesome/velouna" aria-label="Velouna on GitHub"><svg><use href="#i-github"/></svg></a>
       <a class="btn btn-primary btn-sm" href="#download">Download</a>
     </div>
   </div>
@@ -512,9 +563,9 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
     </svg>
   </div>
   <div class="wrap">
-    <a class="pill rise" style="--d:0ms" href="#download"><b>New</b>Velour now runs on Linux<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
+    <a class="pill rise" style="--d:0ms" href="#music"><b>New</b>Velour is now Velouna, with visualizers and plugins<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg></a>
     <h1 class="rise" style="--d:80ms">Press play. <span>It's already playing.</span></h1>
-    <p class="lede rise" style="--d:160ms">Velour is a blazing fast, free media player for Windows, Linux and Android. Double-click a video and the picture is there in about half a second, even when Velour wasn't running. Your videos and music, your Plex, Jellyfin or Emby server and thousands of free TV and radio stations, in one player built on mpv.</p>
+    <p class="lede rise" style="--d:160ms">Velouna is a blazing fast, free media player for Windows, Linux and Android. Double-click a video and the picture is there in about half a second, even when Velouna wasn't running. Your videos and music, your Plex, Jellyfin or Emby server and thousands of free TV and radio stations, in one player built on mpv.</p>
     <div class="cta rise" style="--d:240ms">
       <a class="btn btn-primary" id="hero-main" href="#download"><svg><use href="#i-windows"/></svg><span>Download for Windows</span></a>
       <a class="btn btn-quiet" id="hero-alt" href="#download"><svg><use href="#i-android"/></svg><span>Get it for Android</span></a>
@@ -524,8 +575,8 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       <span>Free and open source</span><span>No account, no ads</span><span>Windows 10 / 11, Linux and Android 8+</span>
     </div>
     <div class="showcase rise" style="--d:380ms">
-      <div class="screen"><img src="screenshots/desktop-player.jpg" width="1600" height="950" alt="Velour on Windows playing a video, with a chapter preview above the seek bar" fetchpriority="high"></div>
-      <div class="handset"><img src="screenshots/phone-radio.png" width="488" height="1000" alt="Velour on a phone: German radio stations with the mini player"></div>
+      <div class="screen"><img src="screenshots/desktop-player.jpg" width="1600" height="950" alt="Velouna on Windows playing a video, with a chapter preview above the seek bar" fetchpriority="high"></div>
+      <div class="handset"><img src="screenshots/phone-radio.png" width="488" height="1000" alt="Velouna on a phone: German radio stations with the mini player"></div>
     </div>
   </div>
 </header>
@@ -547,7 +598,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       <div class="copy reveal">
         <span class="kicker">Speed</span>
         <h2>Half a second from double&#8209;click to picture.</h2>
-        <p class="lede">No splash screen, no library scan, no waiting. The file goes to mpv the moment the window can show a picture, decoded on the graphics card. Even when Velour wasn't running.</p>
+        <p class="lede">No splash screen, no library scan, no waiting. The file goes to mpv the moment the window can show a picture, decoded on the graphics card. Even when Velouna wasn't running.</p>
         <ul class="ticks">
           <li><b>Cold start</b> to the first frame in about 0.55 s, to the first note of a song in 0.4 s</li>
           <li><b>Already open?</b> The next file plays in 0.1 to 0.6 s, in the same window</li>
@@ -556,7 +607,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       </div>
       <div class="visual reveal">
         <div class="clock">
-          <div class="clock-head"><b>From double-click to play</b><small>Velour not running yet</small></div>
+          <div class="clock-head"><b>From double-click to play</b><small>Velouna not running yet</small></div>
           <div class="lap"><span class="lap-name">1080p video<small>H.264</small></span><span class="lap-bar"><i style="--w:.53"></i></span><b>0.53 s</b></div>
           <div class="lap"><span class="lap-name">4K video<small>HEVC 10-bit</small></span><span class="lap-bar"><i style="--w:.6"></i></span><b>0.60 s</b></div>
           <div class="lap"><span class="lap-name">Song<small>MP3</small></span><span class="lap-bar"><i style="--w:.4"></i></span><b>0.40 s</b></div>
@@ -581,8 +632,33 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
         </ul>
       </div>
       <div class="visual reveal">
-        <div class="screen detail"><img src="screenshots/detail-seekbar.jpg" width="1440" height="520" loading="lazy" alt="Close-up of the Velour seek bar: waveform, chapter marks and a preview of the chapter Spirals"></div>
+        <div class="screen detail"><img src="screenshots/detail-seekbar.jpg" width="1440" height="520" loading="lazy" alt="Close-up of the Velouna seek bar: waveform, chapter marks and a preview of the chapter Spirals"></div>
         <p class="visual-note">Hover the seek bar: preview, chapter name and time.</p>
+      </div>
+    </div>
+
+    <div class="row wide" id="music">
+      <div class="copy wide-copy reveal">
+        <div>
+          <span class="kicker">Music</span>
+          <h2>Music you can see.</h2>
+          <p class="lede">Play a song and Velouna listens to all of it first: beats, kicks, snares, build-ups and drops. So the visualizer knows what is coming. The picture gathers during a build-up and breaks open on the drop.</p>
+        </div>
+        <ul class="ticks">
+          <li><b>The Velounizer</b> with Ink, Aurora and Contour, each with palettes and its own sliders</li>
+          <li><b>Same seed, same picture</b>, and after seeking it is right where the song is</li>
+          <li>A <b>now-playing page</b> with cover and queue when the visualizer is off</li>
+          <li>Drawn on the graphics card, analysed once per song and cached</li>
+        </ul>
+      </div>
+      <div class="visual music reveal">
+        <div class="screen"><img src="screenshots/desktop-visualizer.jpg" width="1600" height="950" loading="lazy" alt="The Velounizer's Ink preset filling the player with flowing colour while a song plays"></div>
+        <div class="songmap">
+          <div class="songmap-head"><b>How Velouna hears &ldquo;PULL&rdquo; by Bass Alley FM</b><small>3:19 &middot; 174 BPM &middot; 357 kicks &middot; 4 drops</small></div>
+          <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><linearGradient id="buildgrad" x1="0" x2="1"><stop offset="0" stop-color="#d83f5c" stop-opacity=".3"/><stop offset="1" stop-color="#d83f5c"/></linearGradient></defs></svg>
+          <svg class="songmap-svg" viewBox="0 0 1000 46" preserveAspectRatio="none" aria-hidden="true"><path class="kicks" d="M56.6 14.1V30M57.0 18.6V30M58.0 8.7V30M58.5 14.3V30M59.3 16.8V30M60.2 21.9V30M60.6 21.5V30M62.6 22.2V30M84.0 22.5V30M88.4 22.4V30M111.4 22.9V30M166.6 20.4V30M170.7 22.6V30M221.9 22.6V30M252.8 21.7V30M254.8 21.6V30M260.9 22.5V30M261.7 21.6V30M262.5 20.9V30M332.4 4.0V30M332.8 18.0V30M334.3 20.5V30M336.7 4.0V30M339.3 4.0V30M341.0 20.0V30M343.6 4.0V30M344.4 18.5V30M346.1 4.5V30M348.0 21.7V30M350.5 4.0V30M350.9 18.9V30M353.1 4.0V30M353.5 19.6V30M354.9 22.1V30M357.4 4.9V30M358.3 19.6V30M360.0 7.6V30M361.8 20.5V30M364.3 4.0V30M365.3 19.9V30M366.9 4.0V30M368.7 20.3V30M369.6 21.7V30M370.1 21.6V30M371.2 6.7V30M372.0 20.1V30M373.0 17.8V30M373.7 7.2V30M375.6 21.2V30M378.1 4.1V30M379.2 21.7V30M380.7 4.0V30M384.2 17.2V30M385.0 5.1V30M386.7 16.4V30M387.6 4.0V30M388.1 19.4V30M391.1 22.7V30M391.9 4.2V30M394.5 6.7V30M394.9 20.1V30M396.3 20.2V30M398.8 9.0V30M401.4 4.0V30M403.1 20.7V30M405.7 6.4V30M406.1 19.7V30M406.8 21.5V30M408.3 4.9V30M410.1 20.7V30M412.6 5.2V30M413.0 16.7V30M414.3 16.0V30M415.2 4.9V30M415.6 20.1V30M417.1 22.0V30M418.0 22.0V30M419.5 4.0V30M420.7 20.6V30M421.5 20.7V30M422.1 6.1V30M423.6 20.4V30M424.1 20.1V30M425.2 19.2V30M425.7 18.9V30M426.4 4.1V30M429.0 7.6V30M433.3 4.0V30M435.8 4.0V30M442.8 4.0V30M443.3 18.2V30M445.4 22.3V30M447.1 4.0V30M447.6 16.5V30M449.7 10.9V30M451.5 21.6V30M454.0 6.5V30M456.6 7.1V30M460.9 7.1V30M463.5 4.0V30M465.4 22.6V30M467.8 4.0V30M469.2 19.2V30M470.4 4.8V30M471.9 21.6V30M474.7 7.6V30M477.3 7.9V30M479.1 20.8V30M481.6 9.6V30M482.1 20.7V30M484.2 5.2V30M485.9 21.0V30M488.5 4.0V30M491.1 4.1V30M492.6 22.2V30M494.5 20.9V30M495.4 5.8V30M498.0 4.0V30M502.3 4.2V30M504.9 4.0V30M506.7 22.0V30M509.2 4.0V30M509.7 21.0V30M511.8 5.7V30M513.6 22.0V30M516.1 6.2V30M518.7 6.4V30M522.4 22.8V30M523.0 4.4V30M523.8 20.2V30M524.5 21.9V30M525.6 6.6V30M527.4 22.0V30M529.9 4.0V30M530.4 20.2V30M532.5 9.6V30M533.2 21.3V30M534.3 21.7V30M535.4 22.3V30M536.8 5.4V30M539.4 11.5V30M543.7 4.2V30M546.3 6.6V30M550.6 8.8V30M553.5 18.6V30M587.8 22.9V30M591.3 19.3V30M593.9 19.6V30M594.7 17.7V30M595.6 19.8V30M596.4 16.9V30M597.3 11.5V30M598.1 11.8V30M599.0 14.6V30M599.9 15.4V30M600.7 13.2V30M601.6 13.2V30M602.5 15.7V30M603.3 13.1V30M604.2 12.6V30M605.1 15.6V30M605.9 14.4V30M608.4 7.5V30M610.2 21.4V30M612.7 14.3V30M613.3 21.1V30M613.7 21.6V30M615.3 15.5V30M617.2 21.6V30M619.6 14.2V30M620.5 20.7V30M622.2 16.6V30M625.8 21.7V30M626.6 13.9V30M629.1 20.1V30M630.9 21.7V30M633.5 13.8V30M634.4 21.0V30M636.0 14.5V30M638.7 22.1V30M640.4 16.4V30M640.9 20.0V30M641.3 20.6V30M643.0 18.3V30M644.9 21.8V30M646.5 22.6V30M647.3 19.0V30M648.2 20.7V30M649.7 19.0V30M654.1 15.4V30M656.7 14.2V30M658.6 21.1V30M661.0 12.0V30M663.6 9.9V30M665.4 20.8V30M668.0 18.9V30M668.4 22.2V30M670.6 15.3V30M671.0 19.8V30M672.3 21.4V30M673.2 22.4V30M674.8 13.3V30M675.8 21.2V30M677.4 13.9V30M679.3 22.0V30M681.7 15.2V30M682.8 21.8V30M684.3 14.8V30M688.7 10.6V30M689.6 20.0V30M691.3 13.8V30M693.1 20.9V30M695.6 17.9V30M696.1 21.4V30M698.2 13.5V30M702.5 14.3V30M703.0 20.7V30M703.5 21.3V30M705.1 15.0V30M709.4 10.3V30M711.9 9.8V30M712.8 10.4V30M714.5 10.6V30M716.2 7.5V30M718.0 19.9V30M719.0 13.6V30M721.4 22.3V30M722.4 21.9V30M774.1 10.9V30M775.2 19.4V30M775.7 21.3V30M784.6 20.9V30M786.2 19.0V30M788.0 18.8V30M800.1 16.1V30M801.9 15.7V30M803.6 8.8V30M805.2 8.0V30M807.1 11.5V30M808.6 11.2V30M810.3 8.8V30M812.1 13.3V30M813.8 5.7V30M815.5 14.9V30M816.4 6.6V30M817.2 7.3V30M818.1 5.7V30M819.0 6.7V30M819.8 7.7V30M820.7 7.9V30M821.5 6.8V30M822.4 4.2V30M823.3 4.0V30M824.1 7.3V30M825.0 4.0V30M825.9 4.0V30M826.7 4.0V30M829.3 4.0V30M829.9 20.0V30M831.2 19.3V30M833.6 7.7V30M834.7 18.5V30M836.2 13.9V30M836.7 19.9V30M838.1 20.1V30M839.2 22.6V30M840.5 8.3V30M841.0 20.7V30M841.5 20.4V30M843.1 8.7V30M843.7 20.7V30M845.0 20.8V30M847.4 11.7V30M847.9 19.4V30M848.4 20.1V30M850.0 8.6V30M850.7 19.9V30M851.9 19.8V30M853.7 22.6V30M854.3 4.0V30M855.3 19.7V30M856.9 4.0V30M857.6 20.1V30M858.7 20.1V30M861.2 9.0V30M862.2 18.1V30M863.8 5.9V30M864.5 20.5V30M865.6 19.2V30M868.1 5.4V30M869.0 17.1V30M870.7 12.0V30M872.5 21.1V30M875.0 4.0V30M875.5 21.1V30M876.1 21.1V30M877.6 4.9V30M878.1 21.1V30M879.2 21.3V30M881.1 22.7V30M881.9 4.0V30M884.5 4.6V30M885.0 18.5V30M886.4 19.5V30M887.1 21.6V30M888.8 4.0V30M889.3 19.1V30M889.9 18.3V30M891.4 4.3V30M892.0 20.2V30M893.3 17.2V30M894.8 17.0V30M895.7 4.0V30M896.4 20.3V30M897.5 21.7V30M898.3 5.2V30M898.9 20.0V30M900.2 18.8V30M902.6 4.0V30M903.3 19.3V30M905.2 9.1V30M907.1 19.6V30M909.5 4.1V30M910.6 21.0V30M912.1 6.9V30M912.7 20.3V30M914.1 19.6V30M915.2 21.9V30M915.7 21.4V30M916.4 7.0V30M917.1 20.3V30M917.5 17.8V30M919.0 5.1V30M919.7 19.7V30M920.8 19.1V30M922.6 22.7V30M923.3 4.6V30M924.0 20.6V30M924.4 20.1V30M925.9 9.9V30M927.8 22.2V30M930.2 4.0V30M932.8 6.1V30M934.8 21.3V30M936.2 22.7V30M937.1 4.0V30M940.1 12.1V30M941.4 15.7V30M942.0 9.4V30M943.3 13.9V30M944.0 17.4V30M944.7 18.4V30M945.2 19.2V30M945.8 21.0V30M946.9 22.6V30M947.3 22.2V30M967.3 21.6V30"/><rect class="s-calm" x="0.0" y="34" width="56.0" height="10" rx="3"/><rect class="s-groove" x="58.0" y="34" width="80.8" height="10" rx="3"/><rect class="s-calm" x="140.8" y="34" width="53.1" height="10" rx="3"/><rect class="s-build" x="196.0" y="34" width="25.6" height="10" rx="3"/><rect class="s-drop" x="223.5" y="34" width="44.9" height="10" rx="3"/><rect class="s-groove" x="270.4" y="34" width="25.2" height="10" rx="3"/><rect class="s-calm" x="297.6" y="34" width="32.5" height="10" rx="3"/><rect class="s-drop" x="332.2" y="34" width="219.0" height="10" rx="3"/><rect class="s-calm" x="553.2" y="34" width="18.6" height="10" rx="3"/><rect class="s-build" x="573.8" y="34" width="18.7" height="10" rx="3"/><rect class="s-drop" x="594.5" y="34" width="122.2" height="10" rx="3"/><rect class="s-calm" x="718.8" y="34" width="25.6" height="10" rx="3"/><rect class="s-build" x="746.3" y="34" width="25.6" height="10" rx="3"/><rect class="s-drop" x="773.9" y="34" width="170.9" height="10" rx="3"/><rect class="s-calm" x="946.8" y="34" width="51.2" height="10" rx="3"/></svg>
+          <div class="songmap-key"><span class="k-kick">Kick</span><span class="k-calm">Calm</span><span class="k-groove">Groove</span><span class="k-build">Build-up</span><span class="k-drop">Drop</span></div>
+        </div>
       </div>
     </div>
 
@@ -613,11 +689,39 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       </div>
     </div>
 
+    <div class="row" id="plugins">
+      <div class="copy reveal">
+        <span class="kicker">Plugins</span>
+        <h2>Make it yours.</h2>
+        <p class="lede">Visualizers come as plugins, and anyone can write one: a shader and, if you like, a few lines of Lua. Put it in a repo of your own, and others add it with its link.</p>
+        <ul class="ticks">
+          <li><b>A catalog</b> with the official repo built in: tick, install, done</li>
+          <li><b>Any repo by its link</b>, or just one plugin from it</li>
+          <li><b>Signed repos</b>: if a repo's key ever changes, Velouna stops its updates and warns you</li>
+          <li><b>Reload</b> shows your changes the moment you save</li>
+        </ul>
+        <p class="row-links"><a href="https://github.com/BotAwesome/velouna-plugins/blob/main/docs/getting-started.md">Write your first visualizer</a><a href="https://github.com/BotAwesome/velouna-plugins">Browse the plugin repo</a></p>
+      </div>
+      <div class="visual plug reveal">
+        <div class="screen plug-shot"><img src="screenshots/detail-plugins.jpg" width="1127" height="800" loading="lazy" alt="Velouna's plugin catalog with the Velounizer and example visualizers, three of them ticked for installing"></div>
+        <div class="code-card" aria-label="Part of a visualizer shader">
+          <div class="code-tab"><i></i>glow/draw.glsl</div>
+<pre><span class="k">void</span> <span class="f">main</span>() {
+    <span class="k">vec2</span> p = (<span class="f">px</span>() - F_res.xy * <span class="n">0.5</span>) / F_time.w;
+    <span class="k">float</span> kick = F_pulse.x;   <span class="c">// jumps on a kick</span>
+    <span class="k">float</span> r = <span class="n">0.18</span> + <span class="n">0.06</span> * kick;
+    <span class="k">float</span> glow = <span class="f">exp</span>(-<span class="f">max</span>(<span class="f">length</span>(p) - r, <span class="n">0.0</span>) * <span class="n">9.0</span>);
+    o_color = <span class="k">vec4</span>(<span class="f">C</span>(<span class="n">0</span>) + <span class="f">C</span>(<span class="n">2</span>) * glow, <span class="n">1.0</span>);
+}</pre>
+        </div>
+      </div>
+    </div>
+
     <div class="row" id="android">
       <div class="copy reveal">
         <span class="kicker">Android</span>
         <h2>Just as calm in your hand.</h2>
-        <p class="lede">On the phone Velour gets a layout made for thumbs: big targets, a bottom bar and a player you control with gestures.</p>
+        <p class="lede">On the phone Velouna gets a layout made for thumbs: big targets, a bottom bar and a player you control with gestures.</p>
         <ul class="ticks">
           <li><b>Swipe</b> for volume and brightness, <b>double-tap</b> the edges to skip</li>
           <li>Lock the screen while watching</li>
@@ -657,7 +761,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       <div class="cell">
         <span class="fi"><svg viewBox="0 0 24 24"><path d="M19.5 12a7.5 7.5 0 0 1-13 5.1M4.5 12a7.5 7.5 0 0 1 13-5.1"/><path d="M18 3v4.5h-4.5M6 21v-4.5h4.5"/></svg></span>
         <h3>Updates itself</h3>
-        <p>New versions come from GitHub releases. Velour shows what changed and asks before it installs anything.</p>
+        <p>New versions come from GitHub releases. Velouna shows what changed and asks before it installs anything.</p>
       </div>
       <div class="cell">
         <span class="fi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor" fill-opacity=".3"/></svg></span>
@@ -683,7 +787,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
     <div class="gallery-head reveal">
       <span class="kicker">Screenshots</span>
       <h2>On the desk and in your pocket.</h2>
-      <p class="lede">One Velour, with a layout for each screen.</p>
+      <p class="lede">One Velouna, with a layout for each screen.</p>
     </div>
     <div class="seg-wrap reveal">
       <div class="seg" role="tablist" aria-label="Platform">
@@ -708,30 +812,30 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       <div>
         <span class="kicker">Download</span>
         <h2>Free. No account.<br>Ready in a minute.</h2>
-        <p class="lede">Velour looks for a new version once a day and asks before it installs anything. You can turn that off in the settings.</p>
-        <p class="version" id="version">Latest release on <a href="https://github.com/BotAwesome/velour/releases/latest">GitHub</a> · <a href="https://github.com/BotAwesome/velour/blob/main/CHANGELOG.md">What's new</a></p>
+        <p class="lede">Velouna looks for a new version once a day and asks before it installs anything. You can turn that off in the settings.</p>
+        <p class="version" id="version">Latest release on <a href="https://github.com/BotAwesome/velouna/releases/latest">GitHub</a> · <a href="https://github.com/BotAwesome/velouna/blob/main/CHANGELOG.md">What's new</a></p>
       </div>
       <div class="dl-options">
-        <a class="dl-opt" id="dl-win" href="https://github.com/BotAwesome/velour/releases/latest">
+        <a class="dl-opt" id="dl-win" href="https://github.com/BotAwesome/velouna/releases/latest">
           <span class="os"><svg aria-hidden="true"><use href="#i-windows"/></svg></span>
           <span><b>Windows</b><small id="dl-win-meta">Windows 10 or 11, 64-bit · installer</small></span>
           <span class="go" aria-hidden="true"><svg><use href="#i-down"/></svg></span>
         </a>
-        <a class="dl-opt" id="dl-deb" href="https://github.com/BotAwesome/velour/releases/latest">
+        <a class="dl-opt" id="dl-deb" href="https://github.com/BotAwesome/velouna/releases/latest">
           <span class="os"><svg aria-hidden="true"><use href="#i-linux"/></svg></span>
           <span><b>Linux</b><small id="dl-deb-meta">Pop!_OS, Ubuntu, Debian, Mint · .deb</small></span>
           <span class="go" aria-hidden="true"><svg><use href="#i-down"/></svg></span>
         </a>
-        <a class="dl-opt" id="dl-apk" href="https://github.com/BotAwesome/velour/releases/latest">
+        <a class="dl-opt" id="dl-apk" href="https://github.com/BotAwesome/velouna/releases/latest">
           <span class="os"><svg aria-hidden="true"><use href="#i-android"/></svg></span>
           <span><b>Android</b><small id="dl-apk-meta">Android 8 or newer, arm64 · APK</small></span>
           <span class="go" aria-hidden="true"><svg><use href="#i-down"/></svg></span>
         </a>
         <ul class="dl-notes">
           <li>Windows: installs for your user only, no admin rights, FFmpeg included.</li>
-          <li>Linux: <code>sudo apt install ./velour_…_amd64.deb</code>. Other distributions: the <a id="dl-tgz" href="https://github.com/BotAwesome/velour/releases/latest">.tar.gz</a>, unpack and run <code>./install.sh</code>. mpv, FFmpeg and yt-dlp are included.</li>
+          <li>Linux: <code>sudo apt install ./velouna_…_amd64.deb</code>. Other distributions: the <a id="dl-tgz" href="https://github.com/BotAwesome/velouna/releases/latest">.tar.gz</a>, unpack and run <code>./install.sh</code>. mpv, FFmpeg and yt-dlp are included.</li>
           <li>Android: allow installing apps from your browser or file manager when asked.</li>
-          <li>Or <a href="https://github.com/BotAwesome/velour#build-from-source">build it from source</a>.</li>
+          <li>Or <a href="https://github.com/BotAwesome/velouna#build-from-source">build it from source</a>.</li>
         </ul>
       </div>
     </div>
@@ -746,20 +850,32 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
     </div>
     <div class="reveal">
       <details>
-        <summary>Is Velour really free?</summary>
-        <p>Yes. Velour is open source under the GPL-3.0. There is no account, no subscription and no advertising.</p>
+        <summary>Is Velouna really free?</summary>
+        <p>Yes. Velouna is open source under the GPL-3.0. There is no account, no subscription and no advertising.</p>
       </details>
       <details>
         <summary>Where do the TV channels and radio stations come from?</summary>
-        <p>From public directories: TV channels from <a href="https://github.com/iptv-org/iptv">iptv-org</a>, program guides from <a href="https://epgshare01.online">epgshare01</a> and radio stations from <a href="https://www.radio-browser.info">Radio Browser</a>. Velour plays the streams that broadcasters publish and does not host any itself. Which channels work depends on the broadcaster; some are only available in their own country.</p>
+        <p>From public directories: TV channels from <a href="https://github.com/iptv-org/iptv">iptv-org</a>, program guides from <a href="https://epgshare01.online">epgshare01</a> and radio stations from <a href="https://www.radio-browser.info">Radio Browser</a>. Velouna plays the streams that broadcasters publish and does not host any itself. Which channels work depends on the broadcaster; some are only available in their own country.</p>
       </details>
       <details>
         <summary>Do I need Plex, Jellyfin or Emby?</summary>
-        <p>No. Media servers are optional. Velour plays your local files, network streams, TV and radio without one. If you have a Plex, Jellyfin or Emby server, sign in and it shows up in the library.</p>
+        <p>No. Media servers are optional. Velouna plays your local files, network streams, TV and radio without one. If you have a Plex, Jellyfin or Emby server, sign in and it shows up in the library.</p>
       </details>
       <details>
-        <summary>What does Velour connect to?</summary>
+        <summary>What does Velouna connect to?</summary>
         <p>GitHub once a day to look for updates (you can turn this off). The TV and radio directories, program guides, logos and flags only when you open those pages. Your Plex, Jellyfin or Emby server if you sign in. There is no tracking.</p>
+      </details>
+      <details>
+        <summary>Velour? Velouna?</summary>
+        <p>Velouna was called Velour up to version 0.2.1. Same player, new name, because other players were already called Velour. On Windows and Linux the update from Velour installs Velouna in its place and keeps your settings and library. On Android, Velouna is a new app next to the old one.</p>
+      </details>
+      <details>
+        <summary>Are plugins safe?</summary>
+        <p>Visualizers can only draw: they get no access to your files and no network, and their scripts run in a sandbox with time and memory limits. Every repo is signed, and Velouna blocks updates from a repo whose key changes. Plugins in other people's repos are not checked by the Velouna project, so add only repos you trust.</p>
+      </details>
+      <details>
+        <summary>Can I write my own visualizer?</summary>
+        <p>Yes, with a GLSL shader and an optional Lua script, no compiler needed. Start with the <a href="https://github.com/BotAwesome/velouna-plugins/blob/main/docs/getting-started.md">getting started guide</a> and the examples in the <a href="https://github.com/BotAwesome/velouna-plugins">plugin repo</a>.</p>
       </details>
       <details>
         <summary>Which Linux distributions?</summary>
@@ -767,7 +883,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       </details>
       <details>
         <summary>And macOS?</summary>
-        <p>Not at the moment. Velour is made for Windows, Linux and Android.</p>
+        <p>Not at the moment. Velouna is made for Windows, Linux and Android.</p>
       </details>
     </div>
   </div>
@@ -779,16 +895,17 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
   <div class="wrap">
     <div class="foot">
       <div>
-        <a class="brand" href="#top"><svg aria-hidden="true"><use href="#i-logo"/></svg>Velour</a>
+        <a class="brand" href="#top"><svg aria-hidden="true"><use href="#i-logo"/></svg>Velouna</a>
         <p>A calm media player for Windows, Linux and Android, built on <a href="https://mpv.io">mpv</a>, <a href="https://ffmpeg.org">FFmpeg</a> and <a href="https://github.com/emilk/egui">egui</a>, with icons by <a href="https://phosphoricons.com">Phosphor</a>.</p>
       </div>
       <div>
         <h4>Project</h4>
         <ul>
-          <li><a href="https://github.com/BotAwesome/velour">Source code</a></li>
-          <li><a href="https://github.com/BotAwesome/velour/releases">Releases</a></li>
-          <li><a href="https://github.com/BotAwesome/velour/blob/main/CHANGELOG.md">Changelog</a></li>
-          <li><a href="https://github.com/BotAwesome/velour/issues">Report a problem</a></li>
+          <li><a href="https://github.com/BotAwesome/velouna">Source code</a></li>
+          <li><a href="https://github.com/BotAwesome/velouna/releases">Releases</a></li>
+          <li><a href="https://github.com/BotAwesome/velouna-plugins">Plugins</a></li>
+          <li><a href="https://github.com/BotAwesome/velouna/blob/main/CHANGELOG.md">Changelog</a></li>
+          <li><a href="https://github.com/BotAwesome/velouna/issues">Report a problem</a></li>
         </ul>
       </div>
       <div>
@@ -802,8 +919,8 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
       </div>
     </div>
     <div class="fineprint">
-      <span>Free software under the <a href="https://github.com/BotAwesome/velour/blob/main/LICENSE">GNU GPL v3.0 or later</a>.</span>
-      <span>Velour does not host any streams. Not affiliated with or endorsed by Plex Inc., the Jellyfin project or Emby LLC.</span>
+      <span>Free software under the <a href="https://github.com/BotAwesome/velouna/blob/main/LICENSE">GNU GPL v3.0 or later</a>.</span>
+      <span>Velouna does not host any streams. Not affiliated with or endorsed by Plex Inc., the Jellyfin project or Emby LLC.</span>
     </div>
   </div>
 </footer>
@@ -840,10 +957,12 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
     desktop: [
       ["desktop-home.jpg", "Start", "Continue watching, collections and what you played last."],
       ["desktop-player.jpg", "Player", "A chapter preview right above the thick seek bar."],
+      ["desktop-visualizer.jpg", "Visualizer", "The Velounizer's Ink preset, following the music."],
       ["desktop-tv.jpg", "TV channels", "Public channels with logos and what's on now."],
       ["desktop-guide.jpg", "Program guide", "Today's program of a channel, with what's running."],
       ["desktop-languages.jpg", "Radio by language", "Stations from all over the world, sorted by language."],
       ["desktop-radio.jpg", "Radio stations", "The most popular stations first, with their logos."],
+      ["desktop-plugins.jpg", "Plugins", "The catalog: visualizers from the official repo and any repo you add."],
       ["desktop-settings.jpg", "Settings", "Theme, accent color, hotkeys, subtitles and more."]
     ],
     mobile: [
@@ -983,7 +1102,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
 
   /* latest release: direct download links, size and version */
   const mb = n => Math.round(n / 1048576) + " MB";
-  fetch("https://api.github.com/repos/BotAwesome/velour/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
+  fetch("https://api.github.com/repos/BotAwesome/velouna/releases/latest", { headers: { Accept: "application/vnd.github+json" } })
     .then(r => r.ok ? r.json() : Promise.reject(r.status))
     .then(rel => {
       const assets = rel.assets || [];

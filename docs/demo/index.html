@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Velour – live demo</title>
-<meta name="description" content="Try Velour's look and feel in your browser: library, player, TV, radio and a simulated Plex sign-in. Music by Bass Alley FM.">
+<title>Velouna – live demo</title>
+<meta name="description" content="Try Velouna's look and feel in your browser: library, player, TV, radio and a simulated Plex sign-in. Music by Bass Alley FM.">
 <meta name="theme-color" content="#121212">
 <link rel="icon" href="../assets/icon.svg" type="image/svg+xml">
 <script>
@@ -440,7 +440,7 @@ html.phone .stage.locked .unlock.on { display: grid; }
   <span class="sp"></span>
   <a class="home" href="../">Website</a>
   <a class="dev" href="android.html"><i class="ph ph-android-logo"></i> Android version</a>
-  <a class="dl" href="https://github.com/BotAwesome/velour/releases/latest">Get Velour</a>
+  <a class="dl" href="https://github.com/BotAwesome/velouna/releases/latest">Get Velouna</a>
 </div>
 
 <div class="app" id="app">
@@ -462,7 +462,7 @@ html.phone .stage.locked .unlock.on { display: grid; }
 
   <div class="m-head">
     <svg viewBox="0 0 96 96"><path fill="var(--accent)" d="M12 14Q27 52 46 82L50 82Q39 47 31 14Z"/><path fill="var(--accent)" d="M84 14Q69 52 50 82L46 82Q57 47 65 14Z"/></svg>
-    <span class="tt" id="m-title">Velour</span>
+    <span class="tt" id="m-title">Velouna</span>
     <button class="tb-btn" data-settings aria-label="Settings"><i class="ph ph-gear-six"></i></button>
   </div>
 
@@ -520,7 +520,7 @@ html.phone .stage.locked .unlock.on { display: grid; }
 <script>
 "use strict";
 /* Demo media: next to the page on the preview server, from the VPS on GitHub Pages. */
-const MEDIA = location.hostname.endsWith("github.io") ? "https://botaweso.me/velour-demo/media/" : "media/";
+const MEDIA = location.hostname.endsWith("github.io") ? "https://botaweso.me/velouna-demo/media/" : "media/";
 const ARTIST = "Bass Alley FM";
 const SONGS = [
   { id: "pull", title: "PULL", dur: 199.8 },
@@ -558,14 +558,14 @@ const st = {
   accent: "#d83f5c", lang: "en", theme: "dark",
   set: { updates: true, resume: true, previews: true, waveform: true, sidebar: true, missing: "ask", hwdec: true, speed: false, notif: true },
 };
-try { const h = JSON.parse(localStorage.getItem("velour-demo-history") || "null"); if (Array.isArray(h)) st.history = h.filter(e => S[e.id] || CHANNELS[e.chan]); } catch (e) {}
+try { const h = JSON.parse(localStorage.getItem("velouna-demo-history") || "null"); if (Array.isArray(h)) st.history = h.filter(e => S[e.id] || CHANNELS[e.chan]); } catch (e) {}
 if (!st.history.length) st.history = [
   { id: "signal-loss", pos: 141, done: false },
   { id: "pull", pos: 72, done: false },
   { id: "redline", pos: 210, done: true },
   { id: "no-rush", pos: 248, done: true },
 ];
-const saveHist = () => { try { localStorage.setItem("velour-demo-history", JSON.stringify(st.history.slice(0, 20))); } catch (e) {} };
+const saveHist = () => { try { localStorage.setItem("velouna-demo-history", JSON.stringify(st.history.slice(0, 20))); } catch (e) {} };
 
 const $ = s => document.querySelector(s);
 const media = $("#media");
@@ -632,7 +632,7 @@ function renderSidebar() {
 
 /* ------------------------------------------------------------------ views */
 const VIEW_META = {
-  home: ["ph-house", "Start", "Velour"], videos: ["ph-folder", "Bass Alley FM", "Videos"], music: ["ph-music-notes", "Music", "Music"],
+  home: ["ph-house", "Start", "Velouna"], videos: ["ph-folder", "Bass Alley FM", "Videos"], music: ["ph-music-notes", "Music", "Music"],
   tv: ["ph-television-simple", "TV channels", "TV channels"], radio: ["ph-radio", "Radio stations", "Radio"], network: ["ph-broadcast", "Network", "Network"],
   playlists: ["ph-playlist", "Playlists", "Playlists"], recent: ["ph-clock-counter-clockwise", "Recently played", "Recently played"],
   plex: ["ph-television", "Plex", "Plex"], "plex-lib": ["ph-television", "Plex", "Plex"], "plex-item": ["ph-television", "Plex", "Plex"], more: ["ph-dots-three", "More", "More"],
@@ -705,7 +705,7 @@ const VIEWS = {
       }).join("")}</div>`;
   },
   network() {
-    return `<div class="connect"><div class="ic"><i class="ph ph-broadcast"></i></div><h2>Network stream</h2><p>Paste a link to a stream, a video page or a playlist (.m3u). Velour plays it with mpv – including YouTube links via yt-dlp.</p>
+    return `<div class="connect"><div class="ic"><i class="ph ph-broadcast"></i></div><h2>Network stream</h2><p>Paste a link to a stream, a video page or a playlist (.m3u). Velouna plays it with mpv – including YouTube links via yt-dlp.</p>
       <div class="m-search" style="border-radius:var(--r);margin:14px 0">https://…</div>
       <div class="demo-note"><i class="ph ph-info"></i><span>In the demo, links can't be opened. Try the TV channels or radio stations instead.</span></div>
       <div class="row-wrap"><button class="pill-btn accent" data-go="radio"><i class="ph ph-radio"></i>Radio stations</button><button class="pill-btn" data-go="tv"><i class="ph ph-television-simple"></i>TV channels</button></div></div>`;
@@ -726,12 +726,12 @@ const VIEWS = {
   },
   plex() {
     if (st.plex === "out") return `<div class="connect"><div class="ic"><i class="ph ph-television"></i></div><h2>Connect Plex</h2>
-      <p>Browse your Plex libraries right in Velour – with collections, shows, progress and everything Velour can do while playing.</p>
-      <p class="fine">Sign-in happens on plex.tv in your browser. Velour never sees your password.</p>
+      <p>Browse your Plex libraries right in Velouna – with collections, shows, progress and everything Velouna can do while playing.</p>
+      <p class="fine">Sign-in happens on plex.tv in your browser. Velouna never sees your password.</p>
       <div class="demo-note"><i class="ph ph-info"></i><span><b>Demo:</b> this only shows the steps. Nothing opens, no account is needed and nothing is sent anywhere. The "server" afterwards is made up and plays the demo songs.</span></div>
       <button class="pill-btn accent" id="plex-start"><i class="ph ph-sign-in"></i>Sign in with Plex</button></div>`;
     if (st.plex === "waiting") return `<div class="connect"><div class="ic"><i class="ph ph-browser"></i></div><h2>Confirm in your browser</h2>
-      <p>plex.tv opened in your browser. Sign in there – Velour connects by itself afterwards.</p>
+      <p>plex.tv opened in your browser. Sign in there – Velouna connects by itself afterwards.</p>
       <div class="code">D E M O</div>
       <p class="fine"><span class="spin"></span>Waiting for plex.tv…</p>
       <div class="demo-note"><i class="ph ph-info"></i><span><b>Demo:</b> no browser window opened. Continue to see what comes next.</span></div>
@@ -808,7 +808,7 @@ function updateTitles() {
   if (s) { $("#mini-img").src = img(s); $("#cover-img").src = img(s); }
   $("#cover-t").textContent = s ? title : ""; $("#cover-s").innerHTML = s ? (st.cur.kind === "live" ? `<span class="live-pill">LIVE</span>&nbsp; ${esc(sub)}` : esc(sub)) : "";
   $("#bottom").classList.toggle("has", !!s);
-  document.title = s && !media.paused ? `${title} – Velour demo` : "Velour – live demo";
+  document.title = s && !media.paused ? `${title} – Velouna demo` : "Velouna – live demo";
 }
 function load(id, at = 0, audio = false) {
   const s = S[id];
@@ -1212,7 +1212,7 @@ $("#sleep-btn").onclick = e => {
 };
 $("#p-eq").onclick = e => { e.stopPropagation(); toggleEq($("#p-eq")); };
 $("#rot-btn").onclick = () => {
-  if (window.EMBED && parent !== window) { parent.postMessage({ velour: "rotate" }, "*"); return; }
+  if (window.EMBED && parent !== window) { parent.postMessage({ velouna: "rotate" }, "*"); return; }
   const done = () => screen.orientation?.lock?.(screen.orientation.type.startsWith("portrait") ? "landscape" : "portrait").catch(() => osd("Turn your phone to rotate"));
   if (!document.fullscreenElement && stage.requestFullscreen) stage.requestFullscreen().then(done, () => osd("Turn your phone to rotate")); else done() || osd("Turn your phone to rotate");
 };
@@ -1220,7 +1220,7 @@ matchMedia("(max-width: 760px)").addEventListener("change", () => { applyDevice(
 addEventListener("resize", () => drawAll());
 
 render(); drawAll(); renderQueue();
-setTimeout(() => osd("Welcome to the Velour demo – pick a song, a channel or a station", 3200), 400);
+setTimeout(() => osd("Welcome to the Velouna demo – pick a song, a channel or a station", 3200), 400);
 </script>
 </body>
 </html>
