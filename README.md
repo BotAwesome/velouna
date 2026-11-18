@@ -95,9 +95,9 @@ the visualizer off, songs get a now-playing page with cover and queue.
 <td valign="top">
 
 **Plugins**<br>
-Install visualizers from the built-in catalog or from any repo by its link. Repos are
-signed. Write your own with a GLSL shader and a little Lua:
-[velouna-plugins](https://github.com/BotAwesome/velouna-plugins).
+Install plugins from the built-in catalog or from any repo by its link. Repos are
+signed. Write your own visualizers and Lua plugins, no compiler needed:
+[examples and docs](https://github.com/BotAwesome/velouna-example-plugins).
 
 </td>
 </tr>

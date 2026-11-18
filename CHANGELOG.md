@@ -18,8 +18,9 @@ section becomes the text of its GitHub release and the "What's new" dialog.
   devices in your home network) and asks you first
 - Every Lua plugin has a console: what it wrote, its errors, how long it took, and a prompt
   to try things out. `velouna --no-plugins` starts without any plugins
-- The official repo has eight new examples to learn from: track log, clean titles,
-  segments from a file, notes, effects, webhook, a shared module and podcasts from RSS
+- Eight new examples to learn from: track log, clean titles, segments from a file, notes,
+  effects, webhook, a shared module and podcasts from RSS. They and the documentation
+  live in github.com/BotAwesome/velouna-example-plugins, which you can add under Repos
 
 ## [0.3.0] - 2026-11-18
 
