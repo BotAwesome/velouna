@@ -320,6 +320,13 @@ impl App {
                 ui.close();
             }
         }
+        for (plugin, src) in self.ext_sources() {
+            let sel = matches!(&self.lib.loc, LibLoc::Ext(e) if e.plugin == plugin && e.source == src.id);
+            if widgets::menu_item(ui, &t, crate::ui_ext::icon_glyph(&src.icon), &src.label.get(), "", sel).clicked() {
+                self.lib.go_root(Self::ext_source_loc(&plugin, &src));
+                ui.close();
+            }
+        }
         ui.separator();
         if widgets::menu_item(ui, &t, ph::GEAR_SIX, t!("Einstellungen"), "", false).clicked() {
             self.dialog = Some(Dialog::Settings);

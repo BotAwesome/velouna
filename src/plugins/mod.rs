@@ -7,10 +7,14 @@ use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
+pub mod host;
 pub mod repo;
+pub mod runtime;
+pub mod util;
 
 /// Plugin interface version this Velouna speaks (the previous one is still loaded).
-pub const API: u32 = 1;
+/// 1: visualizers. 2: Lua plugins (`main`, `provides`, events, hooks, …).
+pub const API: u32 = 2;
 /// File extension of a plugin package (a zip).
 pub const EXT: &str = "velounaplugin";
 const MAX_FILES: usize = 512;
@@ -44,10 +48,12 @@ impl Text {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Clone, Copy, Debug, PartialEq, Eq, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum Kind {
     Visualizer,
+    /// A Lua plugin (API 2). Plugins that only name `provides` are this kind.
+    #[default]
     Lua,
     Theme,
 }
@@ -69,6 +75,7 @@ pub struct Manifest {
     #[serde(default)]
     pub description: Text,
     pub version: String,
+    #[serde(default)]
     pub kind: Kind,
     pub api: u32,
     /// Minimum Velouna version, e.g. ">=0.3.0".
@@ -83,6 +90,121 @@ pub struct Manifest {
     /// Kind-specific part (passes, params, palettes of a visualizer).
     #[serde(default)]
     pub visualizer: Option<serde_json::Value>,
+    /// Lua entry file (API 2), relative to the plugin folder.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub main: String,
+    /// Extension points the plugin offers ("service", "menu", "source", …).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub provides: Vec<String>,
+    /// When it is started: "on:start-idle" (default), "on:<event>", "on:settings".
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub activate: Vec<String>,
+    /// Other plugins (modules) it loads with `require`.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub requires: Vec<Require>,
+    /// Settings Velouna draws for it (Extensions → plugin → Settings).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub settings: Vec<Setting>,
+    /// Systems it runs on: "windows", "linux", "android". Empty: all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub platforms: Vec<String>,
+    /// What it is made for: "desktop", "phone", "tablet". Empty: all.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub devices: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Require {
+    pub id: String,
+    #[serde(default)]
+    pub version: String,
+}
+
+/// One entry of a plugin's settings page.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct Setting {
+    pub id: String,
+    /// text, secret, toggle, slider, choice, multi, folder, action
+    #[serde(rename = "type")]
+    pub kind: String,
+    #[serde(default)]
+    pub label: Text,
+    #[serde(default)]
+    pub help: Text,
+    #[serde(default)]
+    pub default: serde_json::Value,
+    #[serde(default)]
+    pub min: Option<f64>,
+    #[serde(default)]
+    pub max: Option<f64>,
+    #[serde(default)]
+    pub step: Option<f64>,
+    /// choice / multi: values, or { "value": …, "label": … } objects.
+    #[serde(default)]
+    pub options: Vec<serde_json::Value>,
+    /// action: name of the Lua function to call (`velouna.settings.on_action`).
+    #[serde(default)]
+    pub run: String,
+}
+
+/// The system this build runs on, as used in `platforms`.
+pub fn this_platform() -> &'static str {
+    if cfg!(target_os = "android") {
+        "android"
+    } else if cfg!(windows) {
+        "windows"
+    } else {
+        "linux"
+    }
+}
+
+/// Known permissions. `network:<host>` and `ipc:<name>` take a value.
+pub fn known_permission(p: &str) -> bool {
+    matches!(
+        p,
+        "network:*" | "network:local" | "open-url" | "hooks:play" | "hooks:stream" | "files:read" | "files:write" | "library" | "history" | "history:write" | "servers" | "clipboard" | "process" | "server" | "tags" | "cast"
+    ) || p.strip_prefix("network:").is_some_and(|h| !h.is_empty() && h.chars().all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '*' | ':')))
+        || p.strip_prefix("ipc:").is_some_and(|n| !n.is_empty())
+}
+
+impl Manifest {
+    /// Systems it really runs on: `process` and `ipc:*` are desktop only.
+    pub fn platforms(&self) -> Vec<String> {
+        let mut v: Vec<String> = if self.platforms.is_empty() { vec!["windows".into(), "linux".into(), "android".into()] } else { self.platforms.clone() };
+        if self.permissions.iter().any(|p| p == "process" || p.starts_with("ipc:")) {
+            v.retain(|p| p != "android");
+        }
+        v
+    }
+
+    pub fn runs_here(&self) -> bool {
+        self.platforms().iter().any(|p| p == this_platform())
+    }
+
+    /// Made for this kind of device (phone layout or desktop).
+    pub fn made_for(&self, phone: bool) -> bool {
+        self.devices.is_empty() || self.devices.iter().any(|d| if phone { d == "phone" || d == "tablet" } else { d == "desktop" })
+    }
+
+    /// The Lua entry file.
+    pub fn main_file(&self) -> &str {
+        if self.main.is_empty() { "main.lua" } else { &self.main }
+    }
+
+    /// Started at idle after launch (the default), not only on demand.
+    pub fn starts_at_idle(&self) -> bool {
+        self.activate.is_empty() || self.activate.iter().any(|a| a == "on:start-idle" || a == "*")
+    }
+
+    /// Started when this event first happens (`on:<event>`).
+    pub fn starts_on(&self, what: &str) -> bool {
+        self.activate.iter().any(|a| a.strip_prefix("on:") == Some(what))
+    }
+
+    /// A module: only loaded by other plugins with `require`.
+    pub fn is_module(&self) -> bool {
+        self.provides.iter().any(|p| p == "module") && self.provides.len() == 1
+    }
 }
 
 impl Manifest {
@@ -106,6 +228,19 @@ impl Manifest {
         }
         if self.kind == Kind::Visualizer && !self.permissions.is_empty() {
             return Err(t!("Visualizer dürfen keine Berechtigungen verlangen").into());
+        }
+        if self.kind == Kind::Lua && self.api < 2 {
+            return Err(t!("Lua-Plugins brauchen \"api\": 2").into());
+        }
+        if let Some(p) = self.permissions.iter().find(|p| !known_permission(p)) {
+            return Err(tf!("Unbekannte Berechtigung „{}“", p));
+        }
+        let main = Path::new(self.main_file());
+        if self.kind == Kind::Lua && main.components().any(|c| !matches!(c, Component::Normal(_))) {
+            return Err(tf!("Ungültige Datei in „main“: {}", self.main));
+        }
+        if !self.runs_here() {
+            return Err(tf!("Läuft nicht auf diesem System (nur {})", self.platforms().join(", ")));
         }
         Ok(())
     }
@@ -391,12 +526,28 @@ mod tests {
             license: String::new(),
             permissions: perms.iter().map(|s| s.to_string()).collect(),
             visualizer: None,
+            main: String::new(),
+            provides: vec![],
+            activate: vec![],
+            requires: vec![],
+            settings: vec![],
+            platforms: vec![],
+            devices: vec![],
         };
         assert!(m("dev.example.ink", &[]).check().is_ok());
         assert!(m("ink", &[]).check().is_err());
         assert!(m("../evil.x", &[]).check().is_err());
         assert!(m("dev.x/y", &[]).check().is_err());
         assert!(m("dev.example.ink", &["network:*"]).check().is_err());
+        let mut lua = m("dev.example.lua", &["network:example.com", "hooks:play"]);
+        lua.kind = Kind::Lua;
+        assert!(lua.check().is_ok());
+        lua.permissions.push("rootkit".into());
+        assert!(lua.check().is_err());
+        lua.permissions = vec!["process".into()];
+        assert_eq!(lua.platforms(), vec!["windows".to_string(), "linux".to_string()]);
+        lua.api = 1;
+        assert!(lua.check().is_err(), "Lua needs api 2");
         assert!(version_lt("0.2.1", "0.10.0"));
         assert!(!version_lt("1.0.0", "1.0.0"));
     }

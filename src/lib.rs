@@ -38,6 +38,7 @@ mod ui_panels;
 mod ui_player;
 mod ui_plex;
 mod ui_plugins;
+mod ui_ext;
 mod ui_update;
 mod cache;
 mod ui_queue;

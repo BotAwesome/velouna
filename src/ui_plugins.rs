@@ -109,7 +109,7 @@ enum Status {
     TooNew,
 }
 
-const WARN: Color32 = Color32::from_rgb(0xE0, 0xA0, 0x30);
+pub(crate) const WARN: Color32 = Color32::from_rgb(0xE0, 0xA0, 0x30);
 
 /// One line of the build form: same height whether it has a button or not.
 fn form_row(ui: &mut Ui, add: impl FnOnce(&mut Ui)) {
@@ -134,18 +134,7 @@ fn kind_icon(k: Kind) -> &'static str {
 
 /// Text of a permission for the dialog, and whether it is critical.
 fn permission(p: &str) -> (String, bool) {
-    match p {
-        "network:*" => (t!("Darf sich mit beliebigen Servern verbinden").into(), true),
-        "files:read" => (t!("Darf Dateien in Ordnern lesen, die du auswählst").into(), false),
-        "files:write" => (t!("Darf Dateien in Ordnern ändern, die du auswählst").into(), true),
-        "servers" => (t!("Zugriff auf deine Plex-, Jellyfin- und Emby-Anmeldungen").into(), true),
-        "process" => (t!("Darf Programme starten").into(), true),
-        "clipboard" => (t!("Darf die Zwischenablage lesen und schreiben").into(), false),
-        _ => match p.strip_prefix("network:") {
-            Some(host) => (tf!("Darf Verbindungen zu {} aufnehmen", host), false),
-            None => (tf!("Unbekannte Berechtigung: {}", p), true),
-        },
-    }
+    crate::ui_ext::permission_text(p)
 }
 
 impl App {
@@ -969,7 +958,7 @@ impl App {
                     self.pick(crate::pick::Pick::Plugin);
                 }
                 if !crate::platform::MOBILE && widgets::icon_text_button(ui, &t, ph::ARROWS_CLOCKWISE, t!("Neu einlesen")).on_hover_text(t!("Liest die Plugin-Ordner neu ein, auch geänderte Shader und score.lua")).clicked() {
-                    self.plugins.rescan();
+                    self.ext_restart_all();
                     self.viz_manifests.clear();
                     self.viz.lock().unwrap().reload();
                 }
@@ -996,13 +985,23 @@ impl App {
             );
         }
         let mut remove: Option<String> = None;
+        let mut open_dialog: Option<Dialog> = None;
+        let mut toggled: Option<(String, bool)> = None;
         for i in ids {
-            let (id, name, version, kind, desc, error, dir) = {
+            let (id, name, version, kind, desc, mut error, dir, has_settings, missing, other_device) = {
                 let p = &self.plugins.list[i];
                 let m = &p.manifest;
-                (m.id.clone(), m.name.get(), m.version.clone(), m.kind, m.description.get(), p.error.clone(), p.dir.clone())
+                let missing = if m.kind == Kind::Lua { crate::plugins::host::Host::missing_grants(p, self.data.plugins.get(&m.id)) } else { vec![] };
+                (m.id.clone(), m.name.get(), m.version.clone(), m.kind, m.description.get(), p.error.clone(), p.dir.clone(), !m.settings.is_empty(), missing, !m.made_for(crate::mobile::touch()))
             };
+            let lua = kind == Kind::Lua;
+            let running = self.ext.is_running(&id);
+            let no_plugins = self.ext.disabled;
+            if error.is_none() {
+                error = self.ext.errors.get(&id).cloned();
+            }
             let mut on = self.data.plugins.get(&id).is_some_and(|s| s.enabled);
+            let was_on = on;
             let update = self.update_for(&id);
             let busy = self.repo_ui.downloading || !self.repo_ui.queue.is_empty() || self.repo_ui.ready.is_some();
             let mut do_update = false;
@@ -1015,9 +1014,27 @@ impl App {
                     Some(e) => ui.label(RichText::new(tf!("Angehalten: {}", e)).size(12.5).color(t.danger)),
                     None => ui.label(RichText::new(&desc).size(12.5).color(t.text_dim)),
                 };
+                if lua && was_on && !missing.is_empty() {
+                    ui.label(RichText::new(t!("Wartet auf deine Erlaubnis")).size(12.0).color(WARN));
+                } else if lua && running {
+                    ui.label(RichText::new(t!("● läuft")).size(12.0).color(Color32::from_rgb(60, 190, 110)));
+                } else if lua && was_on && no_plugins {
+                    ui.label(RichText::new(t!("Plugins sind für diesen Start ausgeschaltet (--no-plugins)")).size(12.0).color(t.text_faint));
+                }
+                if other_device {
+                    ui.label(RichText::new(t!("Für andere Geräte gemacht")).size(12.0).color(t.text_faint));
+                }
             }, |ui| {
                 let more = icon_button(ui, &t, ph::DOTS_THREE, t!("Mehr"), false);
                 egui::Popup::menu(&more).width(220.0).show(|ui| {
+                    if has_settings && widgets::menu_item(ui, &t, ph::SLIDERS_HORIZONTAL, t!("Einstellungen…"), "", false).clicked() {
+                        ui.close();
+                        open_dialog = Some(Dialog::PluginSettings(id.clone()));
+                    }
+                    if lua && widgets::menu_item(ui, &t, ph::TERMINAL_WINDOW, t!("Konsole…"), "", false).clicked() {
+                        ui.close();
+                        open_dialog = Some(Dialog::PluginConsole(id.clone()));
+                    }
                     if !crate::platform::MOBILE && widgets::menu_item(ui, &t, ph::FOLDER_OPEN, crate::platform::show_in_folder_label(), "", false).clicked() {
                         ui.close();
                         crate::ui_panels::show_in_explorer(&dir.join("plugin.json").to_string_lossy());
@@ -1029,8 +1046,16 @@ impl App {
                 });
                 ui.add_space(6.0);
                 if widgets::toggle(ui, &t, &mut on).on_hover_text(if on { t!("Ausschalten") } else { t!("Einschalten") }).changed() {
-                    self.data.plugins.entry(id.clone()).or_default().enabled = on;
-                    self.mark_dirty();
+                    if lua && on && !missing.is_empty() {
+                        // Ask first; the dialog switches it on.
+                        open_dialog = Some(Dialog::PluginGrant(id.clone()));
+                    } else {
+                        self.data.plugins.entry(id.clone()).or_default().enabled = on;
+                        self.mark_dirty();
+                        if lua {
+                            toggled = Some((id.clone(), on));
+                        }
+                    }
                 }
                 if let Some((_, v)) = &update {
                     ui.add_space(6.0);
@@ -1062,6 +1087,15 @@ impl App {
         }
         if let Some(id) = remove {
             self.dialog = Some(Dialog::PluginRemove(id));
+        }
+        if let Some(d) = open_dialog {
+            self.dialog = Some(d);
+            self.ext_ui.back_to_settings = true;
+        }
+        match toggled {
+            Some((id, true)) => self.ext_start(&id),
+            Some((id, false)) => self.ext_stop(&id),
+            None => {}
         }
         if filter.is_empty() && !self.plugins.list.is_empty() && !crate::platform::MOBILE {
             ui.add_space(6.0);
@@ -1111,6 +1145,9 @@ impl App {
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(if critical { ph::WARNING_OCTAGON } else { ph::WARNING }).font(theme::icon(15.0)).color(col));
                     ui.add(egui::Label::new(RichText::new(text).size(13.0).color(t.text)).wrap());
+                    if crate::ui_ext::permission_pending(p) {
+                        ui.label(RichText::new(t!("(noch ohne Funktion)")).size(11.5).color(t.text_faint)).on_hover_text(t!("Diese Velouna-Version bietet die Funktionen hinter dieser Berechtigung noch nicht an."));
+                    }
                     if new {
                         ui.label(RichText::new(t!("neu")).font(theme::semibold(11.5)).color(t.accent));
                     }
@@ -1160,8 +1197,13 @@ impl App {
                     st.granted_version = m.version.clone();
                     st.repo = pkg.origin.as_ref().map(|r| r.url.clone()).unwrap_or_default();
                     self.mark_dirty();
+                    let was_running = self.ext.is_running(&m.id);
+                    self.ext_stop(&m.id);
                     self.plugins.rescan();
                     self.dialog = None;
+                    if m.kind == Kind::Lua && (was_running || !update) {
+                        self.ext_start(&m.id);
+                    }
                     self.osd(if update { tf!("{} aktualisiert", m.name.get()) } else { tf!("{} installiert", m.name.get()) });
                 }
                 Err(e) => self.dialog = Some(Dialog::Error(tf!("Plugin kann nicht installiert werden: {}", e))),
@@ -1197,6 +1239,7 @@ impl App {
             });
         });
         if let Some(keep) = act {
+            self.ext_stop(id);
             let res = self.plugins.get(id).map(|p| plugins::uninstall(p, keep)).unwrap_or(Ok(()));
             match res {
                 Ok(()) => {
@@ -1231,9 +1274,12 @@ fn plugin_row(ui: &mut Ui, t: &theme::Theme, icon: &str, bad: bool, text: impl F
         ui.painter().rect_filled(r, CornerRadius::same(theme::R_LG), bg);
         ui.painter().text(r.center(), egui::Align2::CENTER_CENTER, icon, theme::icon(19.0), fg);
         ui.add_space(4.0);
-        let right_w = 90.0;
-        ui.allocate_ui_with_layout(vec2((ui.available_width() - right_w).max(80.0), 40.0), Layout::top_down(Align::Min), text);
-        ui.with_layout(Layout::right_to_left(Align::Center), right);
+        // Right side first, so the text gets exactly the room that is left.
+        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+            right(ui);
+            ui.add_space(12.0);
+            ui.allocate_ui_with_layout(vec2(ui.available_width().max(80.0), 40.0), Layout::top_down(Align::Min), text);
+        });
     });
     ui.add_space(8.0);
 }

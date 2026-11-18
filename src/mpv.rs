@@ -201,6 +201,14 @@ type FnFreeNodeContents = unsafe extern "C" fn(*mut RawNode);
 type FnErrorString = unsafe extern "C" fn(c_int) -> *const c_char;
 type FnClientApiVersion = unsafe extern "C" fn() -> std::ffi::c_ulong;
 type FnRequestLogMessages = unsafe extern "C" fn(*mut mpv_handle, *const c_char) -> c_int;
+type FnHookAdd = unsafe extern "C" fn(*mut mpv_handle, u64, *const c_char, c_int) -> c_int;
+type FnHookContinue = unsafe extern "C" fn(*mut mpv_handle, u64) -> c_int;
+
+#[repr(C)]
+struct RawEventHook {
+    name: *const c_char,
+    id: u64,
+}
 
 #[repr(C)]
 struct RawEventLogMessage {
@@ -248,6 +256,8 @@ pub struct Api {
     pub render_free: FnRenderFree,
     pub render_report_swap: FnRenderReportSwap,
     request_log_messages: Option<FnRequestLogMessages>,
+    hook_add: Option<FnHookAdd>,
+    hook_continue: Option<FnHookContinue>,
 }
 
 fn candidate_paths() -> Vec<PathBuf> {
@@ -377,6 +387,9 @@ impl Api {
         let render_report_swap: FnRenderReportSwap = sym!(lib, "mpv_render_context_report_swap");
         let request_log_messages: Option<FnRequestLogMessages> =
             unsafe { lib.get::<FnRequestLogMessages>(b"mpv_request_log_messages\0").ok().map(|s| *s) };
+        let hook_add: Option<FnHookAdd> = unsafe { lib.get::<FnHookAdd>(b"mpv_hook_add\0").ok().map(|s| *s) };
+        let hook_continue: Option<FnHookContinue> =
+            unsafe { lib.get::<FnHookContinue>(b"mpv_hook_continue\0").ok().map(|s| *s) };
         Ok(Api {
             _lib: lib,
             path,
@@ -403,6 +416,8 @@ impl Api {
             render_free,
             render_report_swap,
             request_log_messages,
+            hook_add,
+            hook_continue,
         })
     }
 }
@@ -528,6 +543,8 @@ pub enum Event {
     PlaybackRestart,
     PropertyChange { name: String, value: Value },
     CommandReply { userdata: u64, error: i32 },
+    /// A hook added with `hook_add` runs; mpv waits until `hook_continue(id)`.
+    Hook { name: String, id: u64 },
     Other(i32),
 }
 
@@ -750,9 +767,28 @@ impl Mpv {
                 };
                 Event::PropertyChange { name, value }
             }
+            25 => {
+                let h = unsafe { &*(ev.data as *const RawEventHook) };
+                Event::Hook { name: unsafe { cstr(h.name) }, id: h.id }
+            }
             other => Event::Other(other),
         };
         Some(e)
+    }
+
+    /// Makes mpv wait at `name` ("on_load", "on_load_fail", ...) until the
+    /// matching `Event::Hook` is answered with `hook_continue`. False if this
+    /// libmpv has no hooks.
+    pub fn hook_add(&self, name: &str, priority: i32) -> bool {
+        let Some(f) = self.api.hook_add else { return false };
+        let n = c(name);
+        unsafe { f(self.handle, 0, n.as_ptr(), priority) >= 0 }
+    }
+
+    pub fn hook_continue(&self, id: u64) {
+        if let Some(f) = self.api.hook_continue {
+            unsafe { f(self.handle, id) };
+        }
     }
 
     /// Calls `f` from an mpv thread whenever new events are available.

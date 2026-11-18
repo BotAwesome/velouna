@@ -3,6 +3,24 @@
 All notable changes to Velouna (called Velour up to 0.2.1). The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.4.0] - 2026-11-19
+
+### Plugins that do things
+- Lua plugins: small scripts that react to what plays, add entries to the player menu and
+  the main menu, buttons to the player bar, and their own settings page
+- Sources from plugins: a plugin can bring podcasts, channels or anything else into the
+  library, with folders, search and pictures, and its own row on the start page
+- Segments: plugins can mark parts of a video. Velouna skips them, offers a "Skip" button,
+  mutes them or just shows them in colour on the timeline. Every skip can be undone
+- Plugins can clean up titles, change what is about to play, react when a stream fails,
+  and add picture effects and sound filters
+- Before a plugin is switched on, Velouna shows what it wants to do (for example talk to
+  devices in your home network) and asks you first
+- Every Lua plugin has a console: what it wrote, its errors, how long it took, and a prompt
+  to try things out. `velouna --no-plugins` starts without any plugins
+- The official repo has eight new examples to learn from: track log, clean titles,
+  segments from a file, notes, effects, webhook, a shared module and podcasts from RSS
+
 ## [0.3.0] - 2026-11-18
 
 ### Velour is now Velouna

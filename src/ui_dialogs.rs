@@ -155,7 +155,8 @@ impl App {
             self.mobile_settings(ctx);
             return;
         }
-        let modal = egui::Modal::new(Id::new("dialog")).frame(if matches!(d, Dialog::Settings) { modal_frame(&t).inner_margin(egui::Margin::ZERO) } else { modal_frame(&t) }).backdrop_color(Color32::from_black_alpha(150));
+        // One Id per kind of dialog, so a small one does not keep the size of the last big one.
+        let modal = egui::Modal::new(Id::new(("dialog", std::mem::discriminant(&d)))).frame(if matches!(d, Dialog::Settings) { modal_frame(&t).inner_margin(egui::Margin::ZERO) } else { modal_frame(&t) }).backdrop_color(Color32::from_black_alpha(150));
         let resp = modal.show(ctx, |ui| match &d {
             Dialog::Settings => self.dlg_settings(ui),
             Dialog::Hotkeys => self.dlg_hotkeys(ui),
@@ -178,10 +179,16 @@ impl App {
             Dialog::RepoAdd(f) => self.dlg_repo_add(ui, f),
             Dialog::RepoLink => self.dlg_repo_link(ui),
             Dialog::RepoKey(url) => self.dlg_repo_key(ui, url),
+            Dialog::PluginGrant(id) => self.dlg_plugin_grant(ui, id),
+            Dialog::PluginSettings(id) => self.dlg_plugin_settings(ui, id),
+            Dialog::PluginConsole(id) => self.dlg_plugin_console(ui, id),
         });
         let blocking = matches!(d, Dialog::Onboarding(_)) || self.rebinding.is_some() || matches!(d, Dialog::Convert if self.dlg.convert_progress.is_some());
-        if resp.should_close() && !blocking && self.dialog == Some(d) {
+        if resp.should_close() && !blocking && self.dialog.as_ref() == Some(&d) {
             self.dialog = None;
+        }
+        if matches!(d, Dialog::PluginGrant(_) | Dialog::PluginSettings(_) | Dialog::PluginConsole(_)) && self.dialog.is_none() && std::mem::take(&mut self.ext_ui.back_to_settings) {
+            self.dialog = Some(Dialog::Settings);
         }
     }
 

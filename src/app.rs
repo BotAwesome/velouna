@@ -92,6 +92,12 @@ pub enum Dialog {
     RepoLink,
     /// A repo now signed with another key: take the new one or not.
     RepoKey(String),
+    /// A Lua plugin's permissions, before switching it on.
+    PluginGrant(String),
+    /// A plugin's settings page.
+    PluginSettings(String),
+    /// A plugin's log, costs and Lua prompt.
+    PluginConsole(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -249,6 +255,9 @@ pub struct App {
     pub plugins: crate::plugins::Plugins,
     /// Plugin repos: fetched indexes, catalog picks, install queue.
     pub repo_ui: crate::ui_plugins::RepoUi,
+    /// Running Lua plugins (API 2).
+    pub ext: crate::plugins::host::Host,
+    pub ext_ui: crate::ui_ext::ExtUi,
     /// Song analysis for the visualizer (only while one is visible).
     pub songs: crate::viz::Songs,
     pub viz: crate::ui_viz::VizHandle,
@@ -476,6 +485,8 @@ impl App {
             songs: Default::default(),
             viz: Default::default(),
             viz_manifests: Default::default(),
+            ext: Default::default(),
+            ext_ui: Default::default(),
             was_fullscreen: false,
             full_screen: egui::Rect::NOTHING,
             safe_insets: [0.0; 4],
@@ -1266,6 +1277,8 @@ impl App {
         if self.fx_widen {
             parts.push("extrastereo=m=1.8".into());
         }
+        // Plugins' filters (checked against a list of allowed filters).
+        parts.extend(self.ext_audio_filters());
         let chain = if parts.is_empty() { String::new() } else { format!("lavfi=[{}]", parts.join(",")) };
         let _ = p.mpv.set_str("af", &chain);
         let ch = if self.fx_mono { "mono".to_string() } else { self.data.settings.audio_channels.clone() };
@@ -1692,6 +1705,7 @@ impl App {
         // mpv events
         let events = self.player.as_mut().map(|p| p.poll()).unwrap_or_default();
         for e in events {
+            self.ext_mpv_event(&e);
             match e {
                 Event::FileLoaded => {
                     mpv::timing::file_loaded();
@@ -1702,8 +1716,13 @@ impl App {
                     mpv::timing::playing(video);
                 }
                 Event::EndFile { reason, error } if reason == mpv::END_ERROR => {
-                    let msg = self.player.as_ref().map(|p| p.mpv.error_string(error)).unwrap_or_default();
-                    self.osd(tf!("Datei konnte nicht abgespielt werden: {msg}"));
+                    if let Some(why) = self.ext_ui.cancel_reason.take() {
+                        // A plugin stopped it (before-play) or explained it (play-failed).
+                        self.notice(why);
+                    } else {
+                        let msg = self.player.as_ref().map(|p| p.mpv.error_string(error)).unwrap_or_default();
+                        self.osd(tf!("Datei konnte nicht abgespielt werden: {msg}"));
+                    }
                 }
                 Event::Shutdown => ctx.send_viewport_cmd(ViewportCommand::Close),
                 Event::PropertyChange { name, .. } if name == "volume" => {
@@ -1972,6 +1991,8 @@ impl App {
     }
 
     pub fn on_exit_save(&mut self) {
+        // Plugins get up to a second for app-quit (pending scrobbles …).
+        self.ext_quit();
         self.update_history_position();
         self.plex.stop_now(self.data.settings.plex_sync_progress);
         self.data.save();
@@ -2000,12 +2021,14 @@ impl eframe::App for App {
         crate::mobile::tick(ctx);
         crate::mobile::simulator_keys(ctx);
         self.frame_start(ctx);
+        self.ext_tick(ctx);
         if crate::mobile::compact(ctx) && crate::mobile::back_pressed(ctx) {
             self.mobile_back(ctx);
         }
         self.handle_input(ctx);
         self.poll_repos(ctx);
         self.draw(ctx);
+        self.ext_overlays(ctx);
         crate::ui_panels::paint_drag_ghost(ctx, &self.t);
         // The render context is made on the first video paint; a local file
         // opened before any video was on screen found none and stayed black.

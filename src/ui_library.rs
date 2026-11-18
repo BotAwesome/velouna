@@ -247,7 +247,7 @@ impl App {
         let loc = self.lib.loc.clone();
         let show_hidden = self.data.settings.show_hidden;
         let mut v = match &loc {
-            LibLoc::Home | LibLoc::Plex(_) => vec![],
+            LibLoc::Home | LibLoc::Plex(_) | LibLoc::Ext(_) => vec![],
             LibLoc::Videos(None) => self
                 .data
                 .settings
@@ -1024,7 +1024,7 @@ impl App {
         self.pick(crate::pick::Pick::LibraryFolder { music, show: true });
     }
 
-    fn header_nav(&mut self, ui: &mut Ui, compact: bool) {
+    pub(crate) fn header_nav(&mut self, ui: &mut Ui, compact: bool) {
         let t = self.t;
         ui.horizontal(|ui| {
             ui.set_min_height(34.0);
@@ -1452,6 +1452,17 @@ impl App {
             if self.data.settings.nav_shown("servers") {
                 self.plex_nav(ui, nav_item);
             }
+            // Sources of running plugins.
+            let srcs = self.ext_sources();
+            if !srcs.is_empty() {
+                ui.add_space(10.0);
+                for (plugin, src) in srcs {
+                    let sel = matches!(&self.lib.loc, LibLoc::Ext(e) if e.plugin == plugin && e.source == src.id);
+                    if nav_item(ui, &t, crate::ui_ext::icon_glyph(&src.icon), &src.label.get(), sel).clicked() {
+                        self.lib.go(Self::ext_source_loc(&plugin, &src));
+                    }
+                }
+            }
             let show_pins = self.data.settings.nav_shown("pins");
             if show_pins {
                 ui.add_space(14.0);
@@ -1507,6 +1518,12 @@ impl App {
         let mini = self.has_media() && !touch;
         if self.lib.loc == LibLoc::Home {
             self.home(ui);
+        } else if let LibLoc::Ext(e) = self.lib.loc.clone() {
+            if mini {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(below_cursor(ui, 4.0)), |ui| self.ext_page(ui, e, touch));
+            } else {
+                self.ext_page(ui, e, touch);
+            }
         } else if let LibLoc::Plex(p) = self.lib.loc.clone() {
             if self.plex.ready() && !touch {
                 self.header_nav(ui, false);
@@ -1824,6 +1841,11 @@ impl App {
                         self.open_paths(vec![h.path.clone()]);
                     }
                 }
+            }
+            // Sections from plugins.
+            self.ext_home(ui);
+            if self.has_media() {
+                ui.add_space(80.0);
             }
         });
     }

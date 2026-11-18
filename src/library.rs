@@ -33,6 +33,23 @@ pub enum LibLoc {
     /// Public radio (radio-browser.info): languages, or the stations of one
     /// language (API name, label).
     Radio(Option<(String, String)>),
+    /// A page of a plugin source.
+    Ext(ExtLoc),
+}
+
+/// A place in a plugin source: the page `path` of `source` ("" = its
+/// start), or a search when `query` is set.
+#[derive(Clone, PartialEq, Debug)]
+pub struct ExtLoc {
+    pub plugin: String,
+    pub source: String,
+    /// The source's name (first breadcrumb).
+    pub label: String,
+    pub path: String,
+    pub title: String,
+    pub query: String,
+    /// Pages above this one: (title, path).
+    pub trail: Vec<(String, String)>,
 }
 
 /// Places inside the Plex part of the library.
@@ -68,6 +85,7 @@ impl LibLoc {
             LibLoc::Plex(_) => 6,
             LibLoc::Tv(_) => 7,
             LibLoc::Radio(_) => 8,
+            LibLoc::Ext(_) => 9,
         }
     }
 }
@@ -233,6 +251,7 @@ impl LibraryState {
             LibLoc::Tv(Some((_, label))) => label.clone(),
             LibLoc::Radio(None) => t!("Radiosender").into(),
             LibLoc::Radio(Some((_, label))) => label.clone(),
+            LibLoc::Ext(e) => e.title.clone(),
             LibLoc::Playlists(None) => "Playlists".into(),
             LibLoc::Playlists(Some(i)) => data.playlists.get(*i).map(|p| p.name.clone()).unwrap_or_default(),
             LibLoc::Recent => t!("Zuletzt gespielt").into(),
@@ -313,6 +332,17 @@ impl LibraryState {
                     }
                     _ => v.push((self.title(data), self.loc.clone())),
                 }
+            }
+            LibLoc::Ext(e) => {
+                for (i, (title, path)) in e.trail.iter().enumerate() {
+                    let l = ExtLoc { path: path.clone(), title: title.clone(), query: String::new(), trail: e.trail[..i].to_vec(), ..e.clone() };
+                    v.push((title.clone(), LibLoc::Ext(l)));
+                }
+                if !e.query.is_empty() && e.trail.is_empty() {
+                    let root = ExtLoc { path: String::new(), title: e.label.clone(), query: String::new(), trail: vec![], ..e.clone() };
+                    v.push((e.label.clone(), LibLoc::Ext(root)));
+                }
+                v.push((e.title.clone(), self.loc.clone()));
             }
             _ => v.push((self.title(data), self.loc.clone())),
         }

@@ -1,6 +1,6 @@
 [package]
 name = "velouna"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
 repository = "https://github.com/BotAwesome/velouna"
@@ -30,6 +30,9 @@ log = "0.4"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.10"
+# Lua plugins: velouna.hash (HMAC signatures for web APIs).
+sha1 = "0.10"
+hmac = "0.12"
 # Plugin repos: repo.json is signed with Ed25519 (design/plugins.md §8).
 ed25519-dalek = { version = "2", default-features = false, features = ["std", "zeroize"] }
 base64 = "0.22"

@@ -342,6 +342,8 @@ impl App {
             ui.close();
             self.dialog = Some(Dialog::About);
         }
+        let item = self.ext_ui.current.clone();
+        self.ext_menu_items(ui, "main", item);
         widgets::separator(ui, &t);
         if widgets::menu_item(ui, &t, ph::X, t!("Beenden"), &self.shortcut(Action::Quit), false).clicked() {
             ui.close();
@@ -389,11 +391,12 @@ impl App {
                 }
                 ui.add_space(6.0);
                 let viz_w = self.viz_button_width();
-                let right_w: f32 = layout.right.iter().map(|i| self.item_width(*i) + spacing).sum::<f32>() + 16.0 + viz_w;
+                let right_w: f32 = layout.right.iter().map(|i| self.item_width(*i) + spacing).sum::<f32>() + 16.0 + viz_w + self.ext_buttons_width();
                 let seek_w = (ui.available_width() - right_w).max(60.0);
                 self.seek_bar(ui, seek_w);
                 ui.add_space(6.0);
                 self.viz_button(ui);
+                self.ext_buttons(ui);
                 for item in &layout.right {
                     self.control_item(ui, *item);
                 }
@@ -786,6 +789,8 @@ impl App {
                 }
             }
         }
+        // Segments from plugins (skip, ask, mute, mark).
+        self.ext_draw_segments(&painter, track, dur, &st.path);
         // A-B loop
         if let Some(a) = st.ab_a {
             let b = st.ab_b.unwrap_or(a);
@@ -820,7 +825,7 @@ impl App {
             let ht = to_t(hp.x);
             painter.line_segment([pos2(hp.x, track.top()), pos2(hp.x, track.bottom())], Stroke::new(1.0, t.text.gamma_multiply(0.6)));
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
-            let chapter = st.chapters.iter().rev().find(|c| c.time <= ht).map(|c| c.title.clone()).filter(|s| !s.is_empty());
+            let chapter = self.ext_segment_at(&st.path, ht).or_else(|| st.chapters.iter().rev().find(|c| c.time <= ht).map(|c| c.title.clone()).filter(|s| !s.is_empty()));
             let want_thumb = self.data.settings.show_seek_thumbnails && st.has_video() && !media::is_url(&st.path) && self.tools.available();
             let mut tex = None;
             if want_thumb {
@@ -1117,6 +1122,8 @@ impl App {
             ui.close();
             self.dialog = Some(Dialog::Settings);
         }
+        let item = self.ext_ui.current.clone();
+        self.ext_menu_items(ui, "player", item);
     }
 
     // ------------------------------------------------------ subtitle timeline
