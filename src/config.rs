@@ -400,6 +400,8 @@ pub struct Settings {
     // Performance
     pub demuxer_max_mb: u32,
     pub video_sync_display: bool,
+    /// Windows: HDR videos on an HDR screen are shown in HDR.
+    pub hdr_output: bool,
     pub gpu_api: String,
     // Recording
     pub screenshot_dir: PathBuf,
@@ -564,6 +566,7 @@ impl Default for Settings {
             network_timeout: 30.0,
             demuxer_max_mb: 150,
             video_sync_display: false,
+            hdr_output: true,
             gpu_api: "auto".into(),
             screenshot_dir: pictures.join("Velouna"),
             screenshot_format: "png".into(),

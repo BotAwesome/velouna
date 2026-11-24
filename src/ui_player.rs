@@ -105,7 +105,13 @@ impl App {
             }
         }
 
-        let central_fill = if player_view || self.pip.is_some() { self.t.video_bg } else { self.t.bg };
+        let central_fill = if self.hdr_on {
+            egui::Color32::TRANSPARENT
+        } else if player_view || self.pip.is_some() {
+            self.t.video_bg
+        } else {
+            self.t.bg
+        };
         egui::CentralPanel::default().frame(egui::Frame::new().fill(central_fill)).show(ctx, |ui| {
             if player_view || self.pip.is_some() {
                 self.video_area(ui, overlay, bars_visible);
@@ -936,7 +942,9 @@ impl App {
         let ctx = ui.ctx().clone();
         let resp = ui.interact(rect, Id::new("video_area"), Sense::click_and_drag());
         let painter = ui.painter().clone();
-        painter.rect_filled(rect, CornerRadius::ZERO, t.video_bg);
+        if !self.hdr_on {
+            painter.rect_filled(rect, CornerRadius::ZERO, t.video_bg);
+        }
         let Some((p, st)) = self.player.as_ref().map(|p| (p.ctl.clone(), p.st.clone())) else { return };
 
         let viz = self.viz_shown(&st) && self.draw_visualizer(ui, &painter, rect, &st);
@@ -961,7 +969,13 @@ impl App {
             let page = if phone_bar { Rect::from_min_max(pos2(rect.left(), rect.top() + self.safe_insets[1] + crate::mobile::m().header_h), rect.max) } else { rect };
             self.now_playing_page(ui, page, &st, inset);
         } else if let Some(v) = &self.video {
-            v.paint(&painter, rect);
+            // HDR output: mpv draws behind the window, this area stays see-through.
+            if !self.hdr_on {
+                v.paint(&painter, rect);
+            }
+            if self.pip.is_none() {
+                self.video_rect = Some(rect);
+            }
         }
         if let Some(err) = self.video.as_ref().and_then(|v| v.error()) {
             painter.text(rect.center(), Align2::CENTER_CENTER, err, FontId::proportional(14.0), t.danger);

@@ -249,7 +249,11 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
         .with_drag_and_drop(true)
         .with_icon(app_icon())
         // Linux: ties the window to velouna.desktop (icon, dock, "Open with").
-        .with_app_id("velouna");
+        .with_app_id("velouna")
+        // An alpha channel, so the controls over an HDR video can be read
+        // back with their transparency (platform::hdr). Every paint is
+        // opaque otherwise.
+        .with_transparent(cfg!(windows));
     let mut centered = !phone;
     if phone {
         // Top left, clear of the taskbar.

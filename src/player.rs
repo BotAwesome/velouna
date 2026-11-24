@@ -451,6 +451,12 @@ impl PlayerState {
         self.has_media() && crate::media::is_url(&self.path) && self.duration <= 0.0
     }
 
+    /// HDR video (PQ = HDR10/HDR10+/Dolby Vision, HLG).
+    #[allow(dead_code)]
+    pub fn is_hdr(&self) -> bool {
+        matches!(self.transfer.as_str(), "pq" | "hlg")
+    }
+
     pub fn is_audio_only(&self) -> bool {
         self.has_media() && !self.has_video()
     }
