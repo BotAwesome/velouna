@@ -135,7 +135,7 @@ def chart():
              # legend
              f'<rect x="{w - 352}" y="30" width="14" height="14" rx="4" fill="{ACCENT}"/>',
              f'<text x="{w - 330}" y="42" font-size="13.5" fill="{TEXT2}">not running yet</text>',
-             f'<rect x="{w - 212}" y="30" width="14" height="14" rx="4" fill="{ACCENT}" fill-opacity="0.3" stroke="{ACCENT}" stroke-opacity="0.6"/>',
+             f'<rect x="{w - 212}" y="30" width="14" height="14" rx="4" fill="{ACCENT}" fill-opacity="0.45"/>',
              f'<text x="{w - 190}" y="42" font-size="13.5" fill="{TEXT2}">already open</text>']
     axis_bottom = top + row_h * len(ROWS) - 8
     for t in [0, 0.25, 0.5, 0.75, 1.0]:
@@ -149,9 +149,12 @@ def chart():
         # cold start
         parts.append(f'<rect x="{left}" y="{y + 6}" width="{sx(cold) - left:.1f}" height="20" rx="6" fill="{ACCENT}"/>')
         parts.append(f'<text x="{sx(cold) + 10:.1f}" y="{y + 21}" font-size="14" font-weight="600" fill="{TEXT}">{cold:.2f} s</text>'.replace("0.60 s", "0.6 s").replace("0.40 s", "0.4 s"))
-        # warm range
-        parts.append(f'<rect x="{sx(wmin):.1f}" y="{y + 32}" width="{sx(wmax) - sx(wmin):.1f}" height="12" rx="4" fill="{ACCENT}" fill-opacity="0.3" stroke="{ACCENT}" stroke-opacity="0.6"/>')
-        parts.append(f'<text x="{sx(wmax) + 10:.1f}" y="{y + 43}" font-size="12.5" fill="{TEXT2}">{wmin:.2f} – {wmax:.2f} s</text>')
+        # already open: solid bar to the fast case, a thin line up to the slowest
+        # (a file read from the SSD for the first time).
+        parts.append(f'<line x1="{sx(wmin):.1f}" y1="{y + 38}" x2="{sx(wmax):.1f}" y2="{y + 38}" stroke="{ACCENT}" stroke-opacity="0.45" stroke-width="2" stroke-dasharray="2 4"/>')
+        parts.append(f'<line x1="{sx(wmax):.1f}" y1="{y + 33}" x2="{sx(wmax):.1f}" y2="{y + 43}" stroke="{ACCENT}" stroke-opacity="0.6" stroke-width="2"/>')
+        parts.append(f'<rect x="{left}" y="{y + 32}" width="{sx(wmin) - left:.1f}" height="12" rx="4" fill="{ACCENT}" fill-opacity="0.45"/>')
+        parts.append(f'<text x="{sx(wmax) + 10:.1f}" y="{y + 43}" font-size="12.5" fill="{TEXT2}">{wmin:.2f} s, up to {wmax:.2f} s for a new file</text>')
     parts.append(f'<text x="32" y="{h - 22}" font-size="12.5" fill="{TEXT3}">Release build · AMD Ryzen AI 7 350 with Radeon 860M graphics · NVMe SSD</text>')
     write("load-times.svg", w, h, "\n".join(parts))
 
