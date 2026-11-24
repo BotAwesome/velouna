@@ -305,8 +305,28 @@ h1.welcome svg { width: 32px; height: 32px; }
 .m-body { padding: 18px 22px; overflow-y: auto; }
 .m-body h2 { display: flex; align-items: center; font-size: 18px; margin: 0 0 6px; font-weight: 600; }
 .m-body h2 .sp { flex: 1; }
-.m-body h5 { font-size: 14px; font-weight: 600; margin: 18px 0 6px; }
-.srow { display: flex; align-items: center; gap: 10px; min-height: 40px; }
+.m-body h5 { display: flex; align-items: center; gap: 8px; font-size: 14.5px; font-weight: 600; margin: 24px 0 8px; }
+.m-body h5::before { content: ""; width: 3px; height: 15px; border-radius: 2px; background: var(--accent); }
+.srow { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 0 12px; margin-bottom: 2px; border-radius: 6px; background: rgba(255,255,255,.06); }
+.srow.odd { background: rgba(255,255,255,.025); }
+.dl-h { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+.dl-h h2 { margin: 0; font-size: 24px; font-weight: 600; }
+.dl-h .sum { color: var(--text-dim); font-size: 13px; }
+.dl-h .sp { flex: 1; }
+.dl-sec { font-size: 11.5px; letter-spacing: .04em; color: var(--text-faint); text-transform: uppercase; margin: 14px 0 4px; }
+.dl-row { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: var(--r-lg); }
+.dl-row:hover { background: var(--hover); }
+.dl-row > i { font-size: 20px; color: var(--text-faint); }
+.dl-row.run > i, .dl-row.done > i { color: var(--accent); }
+.dl-row .dt { font-weight: 600; font-size: 14px; }
+.dl-row .ds { font-size: 12px; color: var(--text-faint); margin-top: 2px; }
+.dl-row .acts { display: flex; gap: 4px; }
+.dl-bar { display: flex; gap: 3px; height: 8px; margin-top: 7px; }
+.dl-bar span { flex: 1; border-radius: 4px; background: #333; overflow: hidden; }
+.dl-bar span b { display: block; height: 100%; background: var(--accent); }
+.dl-row.pause .dl-bar span b { background: var(--text-faint); }
+.phone .dl-bar { height: 4px; }
+.tb-btn.armed { color: #e8566f; }
 .srow .l { flex: 1; display: flex; align-items: center; gap: 6px; }
 .srow .l i { color: var(--text-faint); font-size: 14px; }
 .seg { display: inline-flex; background: var(--track); border-radius: var(--r); padding: 2px; }
@@ -556,7 +576,7 @@ const st = {
   plex: "out",         // out | waiting | in
   wave: true, muted: false, vol: .8,
   accent: "#d83f5c", lang: "en", theme: "dark",
-  set: { updates: true, resume: true, previews: true, waveform: true, sidebar: true, missing: "ask", hwdec: true, speed: false, notif: true },
+  set: { sync: true, plexhome: true, hdr: true, updates: true, resume: true, previews: true, waveform: true, sidebar: true, missing: "ask", hwdec: true, speed: false, notif: true },
 };
 try { const h = JSON.parse(localStorage.getItem("velouna-demo-history") || "null"); if (Array.isArray(h)) st.history = h.filter(e => S[e.id] || CHANNELS[e.chan]); } catch (e) {}
 if (!st.history.length) st.history = [
@@ -623,7 +643,7 @@ function renderSidebar() {
   h += `<button class="nav" data-demo="Adding folders works in the app"><i class="ph ph-plus"></i>Add folder</button>`;
   $("#sidebar").innerHTML = h;
   const tabs = [["home", "ph-house", "Start"], ["plex", "ph-television", "Plex"], ["videos", "ph-film-strip", "Videos"], ["music", "ph-music-notes", "Music"], ["more", "ph-dots-three", "More"]];
-  const moreViews = ["more", "tv", "radio", "playlists", "recent", "network"];
+  const moreViews = ["more", "tv", "radio", "playlists", "recent", "network", "downloads"];
   $("#tabbar").innerHTML = tabs.map(([k, ic, l]) => {
     const on = v === k || (k === "more" && moreViews.includes(v)) || (k === "plex" && v.startsWith("plex"));
     return `<button class="tab ${on ? "on" : ""}" data-go="${k}"><span class="pill"><i class="ph${on ? "-fill" : ""} ${ic}"></i></span>${l}</button>`;
@@ -635,7 +655,7 @@ const VIEW_META = {
   home: ["ph-house", "Start", "Velouna"], videos: ["ph-folder", "Bass Alley FM", "Videos"], music: ["ph-music-notes", "Music", "Music"],
   tv: ["ph-television-simple", "TV channels", "TV channels"], radio: ["ph-radio", "Radio stations", "Radio"], network: ["ph-broadcast", "Network", "Network"],
   playlists: ["ph-playlist", "Playlists", "Playlists"], recent: ["ph-clock-counter-clockwise", "Recently played", "Recently played"],
-  plex: ["ph-television", "Plex", "Plex"], "plex-lib": ["ph-television", "Plex", "Plex"], "plex-item": ["ph-television", "Plex", "Plex"], more: ["ph-dots-three", "More", "More"],
+  downloads: ["ph-download-simple", "Downloads", "Downloads"], plex: ["ph-television", "Plex", "Plex"], "plex-lib": ["ph-television", "Plex", "Plex"], "plex-item": ["ph-television", "Plex", "Plex"], more: ["ph-dots-three", "More", "More"],
 };
 function histOf(id) { return st.history.find(h => h.id === id && !h.live); }
 function progressOf(id) { const h = histOf(id); return h ? (h.done ? 1 : h.pos / S[id].dur) : 0; }
@@ -671,7 +691,7 @@ const VIEWS = {
   home() {
     const cont = continueList();
     let h = `<h1 class="welcome">${V_LOGO}Welcome back</h1>
-      <div class="row-wrap"><button class="pill-btn" data-demo="Opening your own files works in the app"><i class="ph ph-file-plus"></i>Open file</button><button class="pill-btn" data-go="videos"><i class="ph ph-folder-open"></i>Open folder</button><button class="pill-btn" data-go="network"><i class="ph ph-broadcast"></i>Network stream</button><button class="pill-btn" data-demo="The clipboard is only read in the app"><i class="ph ph-clipboard-text"></i>From clipboard</button></div>`;
+      <div class="row-wrap"><button class="pill-btn" data-demo="Opening your own files works in the app"><i class="ph ph-file-plus"></i>Open file</button><button class="pill-btn" data-go="videos"><i class="ph ph-folder-open"></i>Open folder</button><button class="pill-btn" data-go="network"><i class="ph ph-broadcast"></i>Network stream</button><button class="pill-btn" data-demo="The clipboard is only read in the app"><i class="ph ph-clipboard-text"></i>From clipboard</button>${st.dl.length ? `<button class="pill-btn" data-go="downloads"><i class="ph ph-download-simple"></i>Downloads${dlRunning() ? ` (${dlRunning()})` : ""}</button>` : ""}</div>`;
     if (cont.length) h += `<div class="sec-h">Continue watching</div><div class="shelf">${cont.map(s => cardHTML(s, { from: "home" })).join("")}</div>`;
     if (st.plex === "in") h += `<div class="sec-h">Continue on Demo server <button class="more" data-go="plex">Show all <i class="ph ph-caret-right"></i></button></div><div class="shelf">${["wired-this-way", "paper-thin", "last-words"].map(id => cardHTML(S[id], { from: "plex", sub: "Music video · " + fmt(S[id].dur) })).join("")}</div>`;
     h += `<div class="sec-h">Collections</div><div class="row-wrap coll">${[["videos", "ph-push-pin", "Pinned", "Bass Alley FM"], ["playlists", "ph-playlist", "Playlist", "Late night"], ["tv", "ph-television-simple", "TV channels", "Public TV channels"], ["radio", "ph-radio", "Radio", "Radio stations"]]
@@ -719,8 +739,23 @@ const VIEWS = {
   recent() {
     return `<div class="toolbar"><span class="cnt">${st.history.length} items</span><span class="sp"></span><button class="ghost" id="clear-hist">Clear</button></div>` + recentRows(st.history);
   },
+  downloads() {
+    const open = st.dl.filter(d => d.state !== "done"), fin = st.dl.filter(d => d.state === "done");
+    const run = open.filter(d => d.state === "run" || d.state === "wait");
+    const speed = run.filter(d => d.state === "run").reduce((a, d) => a + d.speed, 0);
+    const nRun = run.filter(d => d.state === "run").length, nWait = run.length - nRun;
+    const sum = run.length ? `${nRun} running${nWait ? ` · ${nWait} waiting` : ""} · ${speed.toFixed(1)} MB/s` : open.length ? `${open.length} paused` : "";
+    let h = `<div class="dl-h"><h2>Downloads</h2><span class="sum">${sum}</span><span class="sp"></span>
+      ${run.length ? `<button class="pill-btn" data-dl="pauseall"><i class="ph ph-pause"></i>Pause all</button>` : open.length ? `<button class="pill-btn" data-dl="resumeall"><i class="ph ph-play"></i>Resume all</button>` : ""}
+      <button class="pill-btn" data-demo="Opens Downloads\\Velouna in the app"><i class="ph ph-folder-open"></i>Open folder</button>
+      <button class="tb-btn" data-dlset aria-label="Download settings"><i class="ph ph-gear"></i></button></div>`;
+    if (!st.dl.length) return h + `<div class="connect"><div class="ic"><i class="ph ph-download-simple"></i></div><h2>No downloads yet</h2><p>Right-click a movie, episode or song on Plex, Jellyfin or Emby → Download. In the demo: open a Plex item and press Download.</p></div>`;
+    if (open.length) h += `<div class="dl-sec">Active</div>` + open.map(dlRow).join("");
+    if (fin.length) h += `<div class="dl-sec">Done · ${fin.reduce((a, d) => a + d.size, 0)} MB</div>` + fin.map(dlRow).join("");
+    return h + `<div class="demo-note"><i class="ph ph-info"></i><span><b>Demo:</b> the progress is simulated. In the app large files load in 4 parts at once and continue after a pause, a lost connection or a restart.</span></div>`;
+  },
   more() {
-    const rows = [["tv", "ph-television-simple", "TV channels"], ["radio", "ph-radio", "Radio stations"], ["playlists", "ph-playlist", "Playlists"], ["recent", "ph-clock-counter-clockwise", "Recently played"], ["network", "ph-broadcast", "Network stream"]];
+    const rows = [["tv", "ph-television-simple", "TV channels"], ["radio", "ph-radio", "Radio stations"], ["playlists", "ph-playlist", "Playlists"], ["recent", "ph-clock-counter-clockwise", "Recently played"], ["network", "ph-broadcast", "Network stream"], ["downloads", "ph-download-simple", "Downloads"]];
     return `<div class="list">${rows.map(([k, ic, l]) => `<button class="lrow" data-go="${k}" style="grid-template-columns:30px 1fr 20px"><i class="ph ${ic}"></i><span class="n">${l}</span><i class="ph ph-caret-right"></i></button>`).join("")}
       <button class="lrow" data-settings style="grid-template-columns:30px 1fr 20px"><i class="ph ph-gear-six"></i><span class="n">Settings</span><i class="ph ph-caret-right"></i></button></div>`;
   },
@@ -754,10 +789,62 @@ const VIEWS = {
     return `<div class="hero"><img class="bg" src="${img(s)}" alt=""><div class="in"><h2>${esc(s.title)}</h2>
       <div class="meta"><span>2026</span><span>${fmt(s.dur)}</span><span>Music video</span><span>1080p · AAC</span></div>
       <p>From the ${ARTIST} catalogue. In the app this page shows a film's or episode's poster, rating, cast, audio and subtitle tracks.</p>
-      <div class="row-wrap"><button class="pill-btn accent" data-play="${s.id}" data-from="plex"><i class="ph-fill ph-play"></i>Play</button><button class="pill-btn" data-demo="Marked as watched (demo)"><i class="ph ph-eye"></i>Mark as watched</button><button class="pill-btn" data-enqueue="${s.id}"><i class="ph ph-queue"></i>Add to queue</button></div></div></div>
+      <div class="row-wrap"><button class="pill-btn accent" data-play="${s.id}" data-from="plex"><i class="ph-fill ph-play"></i>Play</button><button class="pill-btn" data-demo="Marked as watched (demo)"><i class="ph ph-eye"></i>Mark as watched</button><button class="pill-btn" data-enqueue="${s.id}"><i class="ph ph-queue"></i>Add to queue</button>${dlButton(s.id)}</div></div></div>
       <div class="sec-h">More from ${ARTIST}</div><div class="shelf">${SONGS.filter(x => x.id !== s.id).map(x => plexCard(x.id, 0)).join("")}</div>`;
   },
 };
+/* ------------------------------------------------------------------ downloads (simulated) */
+st.dl = [{ id: "paper-thin", size: 412, done: 412, parts: [1, 1, 1, 1], state: "done", speed: 0, at: "2 days ago" }];
+const dlRunning = () => st.dl.filter(d => d.state === "run" || d.state === "wait").length;
+const dlOf = id => st.dl.find(d => d.id === id);
+function dlButton(id) {
+  const d = dlOf(id);
+  if (!d) return `<button class="pill-btn" data-dl="start" data-id="${id}"><i class="ph ph-download-simple"></i>Download</button>`;
+  if (d.state === "done") return `<button class="pill-btn" data-go="downloads"><i class="ph ph-check-circle"></i>Downloaded</button>`;
+  return `<button class="pill-btn" data-go="downloads"><i class="ph ph-download-simple"></i>Downloading ${Math.floor(d.done / d.size * 100)} %</button>`;
+}
+function dlRow(d) {
+  const s = S[d.id];
+  const ic = { run: "ph-download-simple", wait: "ph-download-simple", pause: "ph-pause-circle", done: "ph-check-circle" }[d.state];
+  let sub, acts;
+  if (d.state === "done") {
+    sub = `Demo server · ${d.size} MB · ${d.at}`;
+    acts = `<button class="tb-btn" data-play="${d.id}" data-from="plex" aria-label="Play"><i class="ph ph-play"></i></button><button class="tb-btn" data-demo="Shows the file in Explorer in the app" aria-label="Show in folder"><i class="ph ph-folder-open"></i></button><button class="tb-btn ${d.armed ? "armed" : ""}" data-dl="del" data-id="${d.id}" aria-label="Delete" title="${d.armed ? "Click again: delete the file" : "Delete"}"><i class="ph ph-trash"></i></button>`;
+  } else {
+    const left = d.state === "run" && d.speed ? ` · ${Math.ceil((d.size - d.done) / d.speed)} s left` : "";
+    sub = d.state === "wait" ? "Waiting" : `${d.done.toFixed(0)} MB / ${d.size} MB · ${d.state === "pause" ? "paused" : d.speed.toFixed(1) + " MB/s" + left}`;
+    acts = `${d.state === "pause" ? `<button class="tb-btn" data-dl="resume" data-id="${d.id}" aria-label="Resume"><i class="ph ph-play"></i></button>` : `<button class="tb-btn" data-dl="pause" data-id="${d.id}" aria-label="Pause"><i class="ph ph-pause"></i></button>`}<button class="tb-btn" data-dl="cancel" data-id="${d.id}" aria-label="Cancel"><i class="ph ph-x"></i></button>`;
+  }
+  // One bar per part: the four parts load at the same time.
+  const bar = d.state === "done" ? "" : `<div class="dl-bar">${d.parts.map(p => `<span><b style="width:${(p * 100).toFixed(1)}%"></b></span>`).join("")}</div>`;
+  return `<div class="dl-row ${d.state}"><i class="ph ${ic}"></i><div><div class="dt">${esc(s.title)}</div><div class="ds">${sub}</div>${bar}</div><div class="acts">${acts}</div></div>`;
+}
+function dlAct(a, id) {
+  const d = dlOf(id);
+  if (a === "start" && !d) { st.dl.unshift({ id, size: 120 + Math.round(Math.random() * 140), done: 0, parts: [0, 0, 0, 0], state: dlRunning() ? "wait" : "run", speed: 0, at: "today" }); osd("Download started"); }
+  else if (a === "pause" && d) { d.state = "pause"; d.speed = 0; }
+  else if (a === "resume" && d) d.state = dlRunning() ? "wait" : "run";
+  else if (a === "cancel" && d) st.dl = st.dl.filter(x => x !== d);
+  else if (a === "del" && d) {
+    if (d.armed) { st.dl = st.dl.filter(x => x !== d); osd("Download deleted"); }
+    else { d.armed = true; setTimeout(() => { d.armed = false; if (st.view === "downloads") render(); }, 3000); }
+  }
+  else if (a === "pauseall") st.dl.forEach(x => { if (x.state === "run" || x.state === "wait") { x.state = "pause"; x.speed = 0; } });
+  else if (a === "resumeall") st.dl.filter(x => x.state === "pause").forEach((x, i) => x.state = i ? "wait" : "run");
+  render();
+}
+// One download at a time, its four parts at slightly different speeds.
+setInterval(() => {
+  let d = st.dl.find(x => x.state === "run");
+  if (!d) { d = st.dl.find(x => x.state === "wait"); if (d) d.state = "run"; else return; }
+  d.speed = 16 + Math.random() * 10;
+  const per = d.size / 4;
+  d.parts = d.parts.map(p => Math.min(1, p + d.speed * (0.7 + Math.random() * .6) / 8 / per));
+  d.done = d.parts.reduce((a, p) => a + p * per, 0);
+  if (d.parts.every(p => p >= 1)) { d.done = d.size; d.state = "done"; d.speed = 0; osd(`Downloaded: ${S[d.id].title}`); }
+  if (["downloads", "plex-item", "home"].includes(st.view) && !$("#stage").classList.contains("on")) render();
+}, 500);
+
 function plexCard(id, p, grid) {
   const s = S[id];
   return `<button class="card" data-plex="${id}"><div class="th"><img loading="lazy" src="${img(s)}" alt="">${p ? `<div class="bar"><span style="width:${p * 100}%"></span></div>` : ""}<div class="play"><i class="ph-fill ph-play-circle"></i></div></div><div class="t">${esc(s.title)}</div><div class="s">${ARTIST} · 2026</div></button>`;
@@ -1054,19 +1141,26 @@ const SETTINGS = {
     <h5>Advanced</h5>${srow("Reset all settings", `<button class="ghost danger" data-demo="Nothing to reset in the demo">Reset</button>`)}`,
   Interface: () => `<h5>Layout</h5>${srow("Show sidebar", tog("sidebar"))}${srow("Waveform in the seek bar", tog("waveform"))}${srow("Preview thumbnails above the seek bar", tog("previews"))}`,
   Playback: () => `<h5>Playback</h5>${srow("Resume where you left off", tog("resume"))}${srow("Remember speed per file", tog("speed"))}${srow("Sleep timer default", seg("sleep", [["15 min", "15"], ["30 min", "30"], ["End of file", "end"]]))}`,
-  Video: () => `<h5>Video</h5>${srow("Hardware decoding", tog("hwdec"))}${srow("Scaling", seg("scale", [["Fast", "f"], ["Balanced", "b"], ["Sharp", "s"]]))}`,
+  Video: () => `<h5>Video</h5>${srow("Hardware decoding", tog("hwdec"))}${srow("HDR output (Windows)", tog("hdr"))}${srow("Scaling", seg("scale", [["Fast", "f"], ["Balanced", "b"], ["Sharp", "s"]]))}`,
   Library: () => `<h5>Folders</h5>${srow("Videos", `<span style="color:var(--text-dim)">Bass Alley FM</span>`)}${srow("Missing media", seg("missing", [["Ask", "ask"], ["Remove", "remove"], ["Keep", "keep"]]))}`,
-  Plex: () => `<h5>Account</h5>${srow(st.plex === "in" ? "Signed in (demo)" : "Not signed in", st.plex === "in" ? `<button class="ghost" id="plex-out">Sign out</button>` : `<button class="ghost" data-go="plex" data-close>Connect</button>`)}`,
+  "Media servers": () => `<h5>Plex account</h5>${srow(st.plex === "in" ? "Signed in (demo)" : "Not signed in", st.plex === "in" ? `<button class="ghost" id="plex-out">Sign out</button>` : `<button class="ghost" data-go="plex" data-close>Connect</button>`)}
+    <h5>Jellyfin &amp; Emby</h5>${srow("Add server", `<button class="ghost" data-demo="Jellyfin and Emby connect with address, user name and password in the app">Add…</button>`)}
+    <h5>Behavior</h5>${srow("Sync progress with the server", tog("sync"))}${srow("“Continue watching” from the server on the start page", tog("plexhome"))}
+    <h5>Downloads</h5>${srow("Download folder", `<span style="color:var(--text-dim);font-size:12.5px">Downloads\\Velouna</span><button class="ghost" data-demo="Picking a folder works in the app">Change…</button>`)}
+    ${srow("Parallel parts", `<input class="slider" type="range" min="1" max="8" value="4" aria-label="Parallel parts" oninput="this.nextElementSibling.textContent=this.value"><span class="ghost" style="display:inline-grid;place-items:center">4</span>`)}`,
+  Privacy: () => `<h5>Privacy</h5>${srow("No telemetry, no tracking", `<span style="color:var(--text-dim);font-size:12.5px">Nothing to switch off</span>`)}${srow("Crash reports", `<span style="color:var(--text-dim);font-size:12.5px">Shown first, sent only if you click Send</span>`)}`,
 };
 const segState = { lang: "en", theme: "dark", sleep: "30", scale: "b" };
 function srow(l, ctrl) { return `<div class="srow"><span class="l">${esc(l)} <i class="ph ph-info"></i></span>${ctrl}</div>`; }
 function tog(k) { return `<button class="tog ${st.set[k] ? "on" : ""}" data-tog="${k}" aria-label="${k}" aria-pressed="${!!st.set[k]}"></button>`; }
 function seg(k, opts) { const cur = k === "missing" ? st.set.missing : segState[k]; return `<div class="seg">${opts.map(([l, v]) => `<button class="${cur === v ? "on" : ""}" data-seg="${k}" data-v="${v}">${l}</button>`).join("")}</div>`; }
-const CATS = [["App", [["General", "ph-sliders"], ["Interface", "ph-cursor-click"], ["Privacy", "ph-shield"], ["Controls", "ph-keyboard"]]], ["Media", [["Playback", "ph-play"], ["Video", "ph-film-strip"], ["Audio", "ph-waveform"], ["Subtitles", "ph-subtitles"], ["Library", "ph-books"], ["Plex", "ph-television"]]], ["System", [["Network", "ph-globe"], ["Performance", "ph-cpu"], ["Recording", "ph-record"], ["Extensions", "ph-puzzle-piece"]]]];
+const CATS = [["App", [["General", "ph-sliders"], ["Interface", "ph-cursor-click"], ["Privacy", "ph-shield"], ["Controls", "ph-keyboard"]]], ["Media", [["Playback", "ph-play"], ["Video", "ph-film-strip"], ["Audio", "ph-waveform"], ["Subtitles", "ph-subtitles"], ["Library", "ph-books"], ["Media servers", "ph-hard-drives"]]], ["System", [["Network", "ph-globe"], ["Performance", "ph-cpu"], ["Recording", "ph-record"], ["Extensions", "ph-puzzle-piece"]]]];
 let setCat = "General";
 function settings(cat = setCat) {
   setCat = cat;
-  const body = SETTINGS[cat] ? SETTINGS[cat]() : `<div class="demo-note"><i class="ph ph-info"></i><span>${esc(cat)} settings are in the app. The demo shows the look only.</span></div>`;
+  const raw = SETTINGS[cat] ? SETTINGS[cat]() : null;
+  // Alternate row shades, starting over in every section.
+  const body = raw ? raw.split("<h5>").map(c => { let n = 0; return c.replace(/class="srow"/g, () => `class="srow${n++ % 2 ? " odd" : ""}"`); }).join("<h5>") : `<div class="demo-note"><i class="ph ph-info"></i><span>${esc(cat)} settings are in the app. The demo shows the look only.</span></div>`;
   openModal(`<div class="m-side"><div class="m-search"><i class="ph ph-magnifying-glass"></i>Search settings</div>${CATS.map(([g, items]) => `<div class="side-h">${g}</div>` + items.map(([n, ic]) => `<button class="nav ${n === cat ? "on" : ""}" data-cat="${n}"><i class="ph ${ic}"></i>${n}</button>`).join("")).join("")}</div>
     <div class="m-body"><h2>${esc(cat)} settings<span class="sp"></span>${isPhone() ? `<select id="cat-sel" class="ghost" aria-label="Category">${CATS.flatMap(([, it]) => it).map(([n]) => `<option ${n === cat ? "selected" : ""}>${n}</option>`).join("")}</select>` : ""}<button class="tb-btn" data-close aria-label="Close"><i class="ph ph-x"></i></button></h2>
     <div class="demo-note"><i class="ph ph-info"></i><span>Demo: switches move, but nothing changes – except the accent color, just for fun.</span></div>${body}</div>`, "settings");
@@ -1098,6 +1192,8 @@ document.addEventListener("click", e => {
   if (d.play) { const list = SONGS.map(s => s.id); playFile(list, list.indexOf(d.play)); return; }
   if (d.song) { const list = SONGS.map(s => s.id); playFile(list, list.indexOf(d.song), { audio: true, resume: false }); return; }
   if (d.plex) { go("plex-item", d.plex); return; }
+  if (d.dl) { dlAct(d.dl, d.id); return; }
+  if (d.dlset !== undefined) { closeModal(); settings("Media servers"); return; }
   if (d.live) { closeModal(); playLive(d.live); return; }
   if (d.playall) { playFile(SONGS.map(s => s.id), 0, { audio: d.playall === "music", resume: false }); return; }
   if (d.shuffle !== undefined) { const l = SONGS.map(s => s.id).sort(() => Math.random() - .5); playFile(l, 0, { audio: true, resume: false }); osd("Shuffle"); return; }
