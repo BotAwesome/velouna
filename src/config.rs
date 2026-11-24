@@ -870,7 +870,7 @@ impl Data {
         // Default folders from before the rename still carry the working title.
         let s = &mut d.settings;
         // Earlier default player bars (no repeat button before 0.2.0, no
-        // chapters button before 0.4.1): a bar that was never changed gets
+        // chapters button before 0.5.0): a bar that was never changed gets
         // the new default.
         {
             use ControlItem::*;

@@ -3,6 +3,45 @@
 All notable changes to Velouna (called Velour up to 0.2.1). The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.5.0] - 2026-11-24
+
+### Controls that fit what plays
+- Music no longer shows tools for pictures (subtitles, the video menu, screenshots,
+  picture-in-picture), and live TV and radio no longer show tools for files (repeat,
+  shuffle, speed, bookmarks, converting). "Record stream" only appears for streams
+- Songs always start from the beginning and show no progress. Audio of 20 minutes or
+  more, like podcasts and audiobooks, continues where you left off, also from Plex
+- A click that closes a menu no longer pauses the video behind it
+- Menus with submenus are no longer stretched wide
+
+### Chapters
+- The new chapters button in the player bar opens a strip with a picture for every
+  chapter. It only shows for files that have chapters
+- Picking a chapter starts playing right away, also when paused
+
+### Covers and pictures
+- Songs show their own cover in the queue and on the now-playing page, read straight
+  from the file. Songs without one get the Velouna cover
+- Plex: seeking shows the server's own preview pictures
+- Plugin sources appear in "Continue watching" and pick up where you left off
+
+### Windows
+- Media keys and the Windows media overlay show and control what plays: title,
+  artist, cover, position, play and pause
+- Previous, play/pause and next in the taskbar preview, and the progress of
+  converting in the taskbar icon
+- A right click on the taskbar icon lists "Continue watching" and recently played
+- Thumbnails and song details come from Windows itself, which fills large folders
+  much faster
+- Uses less power while minimized
+- The installer offers to make Velouna your default player
+
+### Android
+- Music plays with a fixed player bar at the bottom, without video gestures
+- Videos get thumbnails and a preview while seeking, songs their title, artist and
+  album, without needing FFmpeg on the phone
+- The first setup fits on small screens
+
 ## [0.4.0] - 2026-11-18
 
 ### Plugins that do things
