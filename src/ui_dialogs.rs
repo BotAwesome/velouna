@@ -183,6 +183,7 @@ impl App {
             Dialog::PluginGrant(id) => self.dlg_plugin_grant(ui, id),
             Dialog::PluginSettings(id) => self.dlg_plugin_settings(ui, id),
             Dialog::PluginConsole(id) => self.dlg_plugin_console(ui, id),
+            Dialog::CrashReport(r) => self.dlg_crash(ui, r.clone()),
         });
         let blocking = matches!(d, Dialog::Onboarding(_)) || self.rebinding.is_some() || matches!(d, Dialog::Convert if self.dlg.convert_progress.is_some());
         if resp.should_close() && !blocking && self.dialog.as_ref() == Some(&d) {
@@ -1941,6 +1942,32 @@ impl App {
             ui.label(t!("2. Lege die enthaltene libmpv-2.dll neben velouna.exe oder in den Ordner „lib“."));
             ui.label(t!("3. Alternativ: Umgebungsvariable VELOUNA_LIBMPV auf den Pfad der DLL setzen."));
         }
+    }
+
+    fn dlg_crash(&mut self, ui: &mut Ui, report: String) {
+        let t = self.t;
+        dlg_width(ui, 560.0);
+        if self.dlg_title(ui, t!("Velouna ist abgestürzt")) {
+            crate::crash::discard();
+            return;
+        }
+        ui.label(RichText::new(t!("Möchtest du den Absturzbericht senden? Er hilft, den Fehler zu finden. Er enthält keine Kennung und nichts über dich – nur das hier:")).color(t.text_dim));
+        ui.add_space(6.0);
+        egui::ScrollArea::vertical().max_height(220.0).show(ui, |ui| {
+            ui.add(egui::Label::new(RichText::new(&report).monospace().size(11.0).color(t.text_faint)).wrap());
+        });
+        ui.add_space(12.0);
+        ui.horizontal(|ui| {
+            if widgets::accent_button(ui, &t, t!("Senden")).clicked() {
+                crate::crash::send(report);
+                self.dialog = None;
+                self.osd(t!("Danke! Bericht wird gesendet"));
+            }
+            if widgets::ghost_button(ui, &t, t!("Nicht senden")).clicked() {
+                crate::crash::discard();
+                self.dialog = None;
+            }
+        });
     }
 
     // ======================================================== onboarding

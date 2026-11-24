@@ -98,6 +98,8 @@ pub enum Dialog {
     PluginSettings(String),
     /// A plugin's log, costs and Lua prompt.
     PluginConsole(String),
+    /// Crash report of the last run: send or not.
+    CrashReport(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -582,6 +584,8 @@ impl App {
             app.dialog = Some(Dialog::Error(e));
         } else if show_onboarding {
             app.dialog = Some(Dialog::Onboarding(0));
+        } else if let Some(report) = crate::crash::pending() {
+            app.dialog = Some(Dialog::CrashReport(report));
         } else if let Some(notes) = whats_new {
             app.dialog = Some(Dialog::WhatsNew(notes));
         }

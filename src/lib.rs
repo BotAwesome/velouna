@@ -10,6 +10,7 @@ extern crate velouna_rfd_shim as rfd;
 
 mod app;
 mod config;
+mod crash;
 mod epg;
 mod flags;
 mod hotkeys;
@@ -218,6 +219,7 @@ pub fn program_start() {
 }
 
 pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
+    crash::install();
     // First, while no other thread runs (set_var).
     #[cfg(target_os = "linux")]
     {
@@ -288,6 +290,7 @@ pub fn run_desktop(files: Vec<String>, phone: bool) -> eframe::Result<()> {
 #[cfg(target_os = "android")]
 pub fn run_android(android_app: winit::platform::android::activity::AndroidApp) {
     platform::android::init(&android_app);
+    crash::install();
     let options = eframe::NativeOptions { android_app: Some(android_app), ..base_options() };
     if let Err(e) = eframe::run_native("Velouna", options, Box::new(|cc| Ok(Box::new(app::App::new(cc, Vec::new()))))) {
         log::error!("eframe: {e}");

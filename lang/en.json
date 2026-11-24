@@ -1194,5 +1194,10 @@
   "Download abbrechen (wartet)": "Cancel download (waiting)",
   "Download abbrechen ({} %)": "Cancel download ({} %)",
   "Download löschen": "Delete download",
-  "Verbindung abgebrochen": "Connection lost"
+  "Verbindung abgebrochen": "Connection lost",
+  "Velouna ist abgestürzt": "Velouna crashed",
+  "Möchtest du den Absturzbericht senden? Er hilft, den Fehler zu finden. Er enthält keine Kennung und nichts über dich – nur das hier:": "Send the crash report? It helps to find the bug. It has no identifier and nothing about you – only this:",
+  "Senden": "Send",
+  "Nicht senden": "Don't send",
+  "Danke! Bericht wird gesendet": "Thanks! Sending the report"
 }
