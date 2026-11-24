@@ -1180,5 +1180,9 @@
   "Übersprungen: {}": "Skipped: {}",
   "● läuft": "● running",
   "(noch ohne Funktion)": "(no function yet)",
-  "Diese Velouna-Version bietet die Funktionen hinter dieser Berechtigung noch nicht an.": "This version of Velouna doesn't offer the functions behind this permission yet."
+  "Diese Velouna-Version bietet die Funktionen hinter dieser Berechtigung noch nicht an.": "This version of Velouna doesn't offer the functions behind this permission yet.",
+  "HDR-Ausgabe": "HDR output",
+  "HDR-Videos werden in HDR gezeigt, wenn in Windows „HDR verwenden“ an ist. Aus: immer in SDR umgerechnet.": "HDR videos are shown in HDR when “Use HDR” is on in Windows. Off: always converted to SDR.",
+  "ausgegeben als HDR": "shown in HDR",
+  "umgerechnet in SDR": "converted to SDR"
 }

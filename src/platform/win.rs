@@ -32,6 +32,11 @@ pub fn set_window(hwnd: isize) {
     let _ = HWND_RAW.set(hwnd);
 }
 
+/// The main window's handle.
+pub fn main_window() -> Option<isize> {
+    HWND_RAW.get().copied()
+}
+
 fn hwnd() -> Option<HWND> {
     HWND_RAW.get().map(|h| HWND(*h as *mut _))
 }

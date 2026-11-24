@@ -105,7 +105,13 @@ impl App {
             }
         }
 
-        let central_fill = if player_view || self.pip.is_some() { self.t.video_bg } else { self.t.bg };
+        let central_fill = if self.hdr_on {
+            egui::Color32::TRANSPARENT
+        } else if player_view || self.pip.is_some() {
+            self.t.video_bg
+        } else {
+            self.t.bg
+        };
         egui::CentralPanel::default().frame(egui::Frame::new().fill(central_fill)).show(ctx, |ui| {
             if player_view || self.pip.is_some() {
                 self.video_area(ui, overlay, bars_visible);
@@ -854,7 +860,7 @@ impl App {
             }
         }
         // handle
-        let handle = Rect::from_center_size(pos2(px.clamp(track.left() + 3.0, track.right() - 3.0), track.center().y), vec2(6.0, th + 6.0));
+        let handle = Rect::from_center_size(pos2(px.min(track.right() - 3.0).max(track.left() + 3.0), track.center().y), vec2(6.0, th + 6.0));
         painter.rect_filled(handle, CornerRadius::same(3), t.accent);
 
         // hover preview
@@ -902,7 +908,8 @@ impl App {
             let card_w = if tex.is_some() { tw + 8.0 } else { 110.0 };
             let card_h = if tex.is_some() { th_img + 30.0 } else { 26.0 } + if chapter.is_some() { 16.0 } else { 0.0 };
             let screen = ui.ctx().screen_rect();
-            let x = (hp.x - card_w / 2.0).clamp(screen.left() + 4.0, screen.right() - card_w - 4.0);
+            // min/max, not clamp: a minimized window is narrower than the card.
+            let x = (hp.x - card_w / 2.0).min(screen.right() - card_w - 4.0).max(screen.left() + 4.0);
             let y = track.top() - card_h - 12.0;
             egui::Area::new(Id::new("seek_preview")).order(Order::Tooltip).fixed_pos(pos2(x, y)).interactable(false).show(ui.ctx(), |ui| {
                 let r = Rect::from_min_size(pos2(x, y), vec2(card_w, card_h));
@@ -936,7 +943,9 @@ impl App {
         let ctx = ui.ctx().clone();
         let resp = ui.interact(rect, Id::new("video_area"), Sense::click_and_drag());
         let painter = ui.painter().clone();
-        painter.rect_filled(rect, CornerRadius::ZERO, t.video_bg);
+        if !self.hdr_on {
+            painter.rect_filled(rect, CornerRadius::ZERO, t.video_bg);
+        }
         let Some((p, st)) = self.player.as_ref().map(|p| (p.ctl.clone(), p.st.clone())) else { return };
 
         let viz = self.viz_shown(&st) && self.draw_visualizer(ui, &painter, rect, &st);
@@ -961,7 +970,13 @@ impl App {
             let page = if phone_bar { Rect::from_min_max(pos2(rect.left(), rect.top() + self.safe_insets[1] + crate::mobile::m().header_h), rect.max) } else { rect };
             self.now_playing_page(ui, page, &st, inset);
         } else if let Some(v) = &self.video {
-            v.paint(&painter, rect);
+            // HDR output: mpv draws behind the window, this area stays see-through.
+            if !self.hdr_on {
+                v.paint(&painter, rect);
+            }
+            if self.pip.is_none() {
+                self.video_rect = Some(rect);
+            }
         }
         if let Some(err) = self.video.as_ref().and_then(|v| v.error()) {
             painter.text(rect.center(), Align2::CENTER_CENTER, err, FontId::proportional(14.0), t.danger);

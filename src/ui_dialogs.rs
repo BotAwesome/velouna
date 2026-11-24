@@ -883,6 +883,10 @@ impl App {
                 r.row(ui, t!("An Bildschirm-Bildrate anpassen"), t!("Flüssigere Bewegungen durch Resampling (display-resample)."), |ui| {
                     widgets::toggle(ui, &t, &mut s.video_sync_display);
                 });
+                #[cfg(windows)]
+                r.row(ui, t!("HDR-Ausgabe"), t!("HDR-Videos werden in HDR gezeigt, wenn in Windows „HDR verwenden“ an ist. Aus: immer in SDR umgerechnet."), |ui| {
+                    widgets::toggle(ui, &t, &mut s.hdr_output);
+                });
             }
             SettingsPage::Audio => {
                 r.section(ui, t!("Lautstärke"));

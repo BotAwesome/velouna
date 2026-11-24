@@ -333,6 +333,11 @@ pub struct App {
     /// The storage dialog was shown by itself once this run.
     #[allow(dead_code)]
     pub storage_prompted: bool,
+    /// Where the big player drew the video this frame (HDR output).
+    #[allow(dead_code)]
+    pub video_rect: Option<egui::Rect>,
+    /// mpv draws the video itself in HDR, behind the see-through window.
+    pub hdr_on: bool,
 }
 
 fn init_mpv(s: &Settings) -> Result<Arc<Mpv>, String> {
@@ -557,6 +562,8 @@ impl App {
             storage: crate::pick::StorageAccess::current(),
             storage_checked: Instant::now(),
             storage_prompted: false,
+            video_rect: None,
+            hdr_on: false,
             missing_pending: Vec::new(),
             missing_rx: None,
             data,
@@ -2089,7 +2096,10 @@ impl eframe::App for App {
         }
         self.handle_input(ctx);
         self.poll_repos(ctx);
+        self.video_rect = None;
         self.draw(ctx);
+        #[cfg(windows)]
+        self.hdr_tick(ctx);
         self.ext_overlays(ctx);
         crate::ui_panels::paint_drag_ghost(ctx, &self.t);
         // The render context is made on the first video paint; a local file
@@ -2119,6 +2129,11 @@ impl eframe::App for App {
     }
 
     fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        // HDR output: what is drawn over the video is read back with its
+        // alpha (platform::hdr), so the rest has to stay empty.
+        if self.hdr_on {
+            return [0.0; 4];
+        }
         let c = self.t.bg;
         [c.r() as f32 / 255.0, c.g() as f32 / 255.0, c.b() as f32 / 255.0, 1.0]
     }
@@ -2208,6 +2223,72 @@ mod missing_tests {
 impl App {
     /// Taskbar buttons and progress every frame; the overlay picture and
     /// the jump list now and then.
+    /// HDR output: mpv draws HDR videos itself into a window behind
+    /// Velouna while the big player shows them on an HDR screen; otherwise
+    /// the normal OpenGL path. See `platform::hdr`.
+    fn hdr_tick(&mut self, ctx: &egui::Context) {
+        let Some(main) = crate::platform::win::main_window() else { return };
+        let Some(p) = self.player.as_ref() else { return };
+        let rect = self.video_rect;
+        let minimized = ctx.input(|i| i.viewport().minimized).unwrap_or(false);
+        let shown = self.data.settings.hdr_output && self.pip.is_none() && rect.is_some() && !minimized && p.st.has_video();
+        // While the next file loads the curve is still unknown: stay as is.
+        let loading = p.st.transfer.is_empty() && p.st.has_media();
+        let want = if loading && shown { self.hdr_on } else { shown && p.st.is_hdr() && crate::platform::hdr::screen_hdr(main) };
+        // Windows HDR can be switched while playing, and in HDR mode nothing
+        // else may repaint: look again every two seconds.
+        if shown && (p.st.is_hdr() || loading) {
+            ctx.request_repaint_after(Duration::from_secs(2));
+        }
+        if want != self.hdr_on {
+            let m = &p.mpv;
+            if want {
+                let Some(wid) = crate::platform::hdr::video_window(main) else { return };
+                let _ = m.set_i64("wid", wid as i64);
+                let _ = m.set_str("gpu-api", "d3d11");
+                let _ = m.set_str("target-colorspace-hint", "yes");
+                let r = m.set_str("vo", "gpu-next");
+                log::info!("HDR output on ({})", if r.is_ok() { "gpu-next" } else { "vo switch failed" });
+            } else {
+                crate::platform::hdr::place(None);
+                let _ = m.set_str("vo", "libmpv");
+                log::info!("HDR output off");
+            }
+            self.hdr_on = want;
+            ctx.request_repaint();
+        }
+        if self.hdr_on {
+            if let Some(r) = rect {
+                let ppp = ctx.pixels_per_point();
+                let (x, y) = ((r.min.x * ppp).round() as i32, (r.min.y * ppp).round() as i32);
+                let (w, h) = ((r.max.x * ppp).round() as i32 - x, (r.max.y * ppp).round() as i32 - y);
+                crate::platform::hdr::place(Some([x, y, w, h]));
+                // After everything else is painted: read the video area back
+                // (controls, menus, OSD over the video) for the overlay window.
+                let cb = egui::PaintCallback {
+                    rect: ctx.screen_rect(),
+                    callback: std::sync::Arc::new(eframe::egui_glow::CallbackFn::new(move |info, painter| {
+                        use eframe::glow::{self, HasContext};
+                        let fh = info.screen_size_px[1] as i32;
+                        let (w, h) = (w.max(1), h.max(1));
+                        let mut buf = vec![0u8; (w * h * 4) as usize];
+                        unsafe {
+                            painter.gl().read_pixels(x, fh - y - h, w, h, glow::RGBA, glow::UNSIGNED_BYTE, glow::PixelPackData::Slice(Some(&mut buf)));
+                        }
+                        // OpenGL rows run bottom-up.
+                        let row = (w * 4) as usize;
+                        let mut top = vec![0u8; buf.len()];
+                        for (i, r) in buf.chunks_exact(row).rev().enumerate() {
+                            top[i * row..(i + 1) * row].copy_from_slice(r);
+                        }
+                        crate::platform::hdr::overlay(&top, w, h);
+                    })),
+                };
+                ctx.layer_painter(egui::LayerId::new(egui::Order::Debug, egui::Id::new("hdr_grab"))).add(cb);
+            }
+        }
+    }
+
     fn windows_tick(&mut self) {
         let playing = self.player.as_ref().filter(|p| p.st.has_media()).map(|p| !p.st.paused);
         let progress = self.dlg.convert_progress.map(|(d, t)| if t > 0.0 { (d / t) as f32 } else { 0.0 });
