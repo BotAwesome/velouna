@@ -6,9 +6,10 @@
 
 **A blazing fast media player for Windows, Linux and Android, built on mpv.**
 
-Double-click a video and the picture is there in about half a second – even when Velouna
-wasn't running. Your videos and music, your Plex, Jellyfin or Emby server, thousands of
-free TV and radio stations – in one player with thin bars and a thick seek bar.
+Picture in half a second, even from a cold start. Your files, Plex, Jellyfin, Emby,
+free TV and radio – in one player.
+
+**No telemetry, no tracking.** Crash reports are sent only if you click *Send* – without any identifier.
 
 [![Latest release](https://img.shields.io/github/v/release/BotAwesome/velouna?color=D83F5C&label=release)](https://github.com/BotAwesome/velouna/releases/latest)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-1A1220)](LICENSE)
@@ -25,29 +26,24 @@ free TV and radio stations – in one player with thin bars and a thick seek bar
 
 </div>
 
-## Blazing fast
+<a name="blazing-fast"></a>
+<img src="docs/readme/banner-blazing-fast.svg" width="100%" alt="Blazing fast">
 
-From double-click to the first frame on screen (or the first sound for music), measured
-with the release build on a laptop with an AMD Ryzen AI 7 350, its integrated Radeon 860M
-graphics and an NVMe SSD:
-
-| | Velouna not running yet | Velouna already open |
-|---|---|---|
-| Video, 1080p H.264 | **0.53 s** | 0.12 – 0.56 s |
-| Video, 4K HEVC 10-bit | **0.6 s** | 0.16 – 0.59 s |
-| Music, MP3 | **0.4 s** | 0.07 – 0.45 s |
+<img src="docs/readme/load-times.svg" width="100%" alt="Double-click to first frame. Velouna not running yet: 1080p H.264 0.53 s, 4K HEVC 10-bit 0.6 s, MP3 0.4 s. Already open: 0.12–0.56 s, 0.16–0.59 s, 0.07–0.45 s.">
 
 No splash screen and no library scan before playback: the file goes to mpv the moment
 the window can show a picture, decoded on the graphics card. Opening another file hands
 it to the window that is already open instead of starting a second Velouna. The very first
 start after booting takes a little longer while the system reads Velouna from disk.
 
-## Highlights
+<a name="highlights"></a>
+<img src="docs/readme/banner-highlights.svg" width="100%" alt="Highlights">
 
 <table>
 <tr>
 <td width="50%" valign="top">
 
+<img src="docs/readme/icon-playback.svg" width="40" alt=""><br>
 **Playback**<br>
 Nearly every video and audio format via [mpv](https://mpv.io), with hardware decoding. A
 thick seek bar with preview thumbnails, chapter marks and an optional waveform. HDR
@@ -57,6 +53,7 @@ picture-in-picture, a 10-band equalizer and a subtitle style editor.
 </td>
 <td width="50%" valign="top">
 
+<img src="docs/readme/icon-library.svg" width="40" alt=""><br>
 **Library**<br>
 A start page with *Continue watching*, your video and music folders, playlists, pinned
 folders and network streams. Music plays on in the library with a mini player, so you
@@ -67,6 +64,7 @@ can keep browsing.
 <tr>
 <td valign="top">
 
+<img src="docs/readme/icon-tv-radio.svg" width="40" alt=""><br>
 **Live TV and radio**<br>
 Thousands of free TV channels ([iptv-org](https://github.com/iptv-org/iptv)) and radio
 stations ([Radio Browser](https://www.radio-browser.info)), sorted by language, with
@@ -76,6 +74,7 @@ shows the song that's playing.
 </td>
 <td valign="top">
 
+<img src="docs/readme/icon-servers.svg" width="40" alt=""><br>
 **Plex, Jellyfin and Emby**<br>
 Sign in to Plex, or connect a Jellyfin or Emby server with its address, user name and
 password. Browse libraries, collections and playlists, search, and play – watch progress
@@ -86,6 +85,7 @@ stays in sync with your server.
 <tr>
 <td valign="top">
 
+<img src="docs/readme/icon-music.svg" width="40" alt=""><br>
 **Music you can see**<br>
 Visualizers that know the whole song: Velouna analyses beats, kicks, build-ups and drops
 once, and the picture follows them. The Velounizer brings Ink, Aurora and Contour. With
@@ -94,6 +94,7 @@ the visualizer off, songs get a now-playing page with cover and queue.
 </td>
 <td valign="top">
 
+<img src="docs/readme/icon-plugins.svg" width="40" alt=""><br>
 **Plugins**<br>
 Install plugins from the built-in catalog or from any repo by its link. Repos are
 signed. Write your own visualizers and Lua plugins, no compiler needed:
@@ -104,6 +105,7 @@ signed. Write your own visualizers and Lua plugins, no compiler needed:
 <tr>
 <td valign="top">
 
+<img src="docs/readme/icon-android.svg" width="40" alt=""><br>
 **Android**<br>
 A touch layout: swipe for volume and brightness, double-tap the edges to skip, lock the
 screen, and rearrange the player bar live with drag and drop.
@@ -111,6 +113,7 @@ screen, and rearrange the player bar live with drag and drop.
 </td>
 <td valign="top">
 
+<img src="docs/readme/icon-everywhere.svg" width="40" alt=""><br>
 **Everywhere**<br>
 German and English, light and dark theme, your own accent color. On Windows: media keys
 and the volume overlay, buttons and progress in the taskbar, recent files in the jump
@@ -121,7 +124,8 @@ installs anything.
 </tr>
 </table>
 
-## Screenshots
+<a name="screenshots"></a>
+<img src="docs/readme/banner-screenshots.svg" width="100%" alt="Screenshots">
 
 More on the [website](https://botawesome.github.io/velouna/#screenshots).
 
@@ -144,7 +148,8 @@ More on the [website](https://botawesome.github.io/velouna/#screenshots).
 
 The videos in these screenshots are generated with FFmpeg.
 
-## Install
+<a name="install"></a>
+<img src="docs/readme/banner-install.svg" width="100%" alt="Install">
 
 Get the files from the [latest release](https://github.com/BotAwesome/velouna/releases/latest).
 
@@ -157,7 +162,8 @@ Get the files from the [latest release](https://github.com/BotAwesome/velouna/re
 Velouna looks for a new release once a day (you can turn that off in *Settings → General*)
 and asks before it installs anything.
 
-## Build from source
+<a name="build-from-source"></a>
+<img src="docs/readme/banner-build.svg" width="100%" alt="Build from source">
 
 You need a current stable [Rust](https://rustup.rs) (edition 2024).
 
@@ -210,7 +216,8 @@ then run `pwsh tools\release.ps1 -Publish`. It builds the installer, the APK and
 a GitHub release with the changelog section as its text. Installed copies of Velouna pick it
 up from there.
 
-## Project layout
+<a name="project-layout"></a>
+<img src="docs/readme/banner-layout.svg" width="100%" alt="Project layout">
 
 | Path | What |
 |---|---|
@@ -225,7 +232,8 @@ up from there.
 | `i18n-macros/` | Compile-time check that every text has a translation |
 | `docs/` | The website (GitHub Pages) and screenshots |
 
-## Credits
+<a name="credits"></a>
+<img src="docs/readme/banner-credits.svg" width="100%" alt="Credits">
 
 Velouna stands on [mpv / libmpv](https://mpv.io), [FFmpeg](https://ffmpeg.org),
 [egui](https://github.com/emilk/egui), [Phosphor Icons](https://phosphoricons.com) and
@@ -235,7 +243,8 @@ TV channels come from [iptv-org](https://github.com/iptv-org/iptv), program guid
 [Radio Browser](https://www.radio-browser.info); Velouna does not host any streams.
 Velouna is not affiliated with or endorsed by Plex Inc.
 
-## License
+<a name="license"></a>
+<img src="docs/readme/banner-license.svg" width="100%" alt="License">
 
 Velouna is free software under the [GNU General Public License v3.0 or later](LICENSE).
 The Windows installer, the Linux packages and the Android app include mpv and FFmpeg,

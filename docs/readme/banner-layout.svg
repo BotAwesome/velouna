@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="104" viewBox="0 0 880 104" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+<defs>
+  <radialGradient id="g" cx="0.08" cy="0.5" r="0.6">
+    <stop offset="0" stop-color="#d83f5c" stop-opacity="0.30"/>
+    <stop offset="1" stop-color="#d83f5c" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="c"><rect width="880" height="104" rx="18"/></clipPath>
+</defs>
+<g clip-path="url(#c)">
+  <rect width="880" height="104" fill="#151216"/>
+  <rect width="880" height="104" fill="url(#g)"/>
+  <path d="M600 -10Q618 52.0 640 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.105"/>
+<path d="M646 -10Q664 52.0 686 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.135"/>
+<path d="M692 -10Q710 52.0 732 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.165"/>
+<path d="M738 -10Q756 52.0 778 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.195"/>
+<path d="M784 -10Q802 52.0 824 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.225"/>
+<path d="M830 -10Q848 52.0 870 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.255"/>
+<path d="M876 -10Q894 52.0 916 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.285"/>
+</g>
+<rect x="0.5" y="0.5" width="879" height="103" rx="18" fill="none" stroke="#2a2429"/>
+<rect x="28" y="24" width="56" height="56" rx="16" fill="#d83f5c" fill-opacity="0.16" stroke="#d83f5c" stroke-opacity="0.45"/>
+<path d="M60.0 50.0H66.0Q66.84375 50.0 67.421875 49.421875Q68.0 48.84375 68.0 48.0V42.0Q68.0 41.15625 67.421875 40.578125Q66.84375 40.0 66.0 40.0H60.0Q59.15625 40.0 58.578125 40.578125Q58.0 41.15625 58.0 42.0V44.0H56.0Q54.75 44.0 53.875 44.875Q53.0 45.75 53.0 47.0V51.0H49.0V50.0Q49.0 49.15625 48.421875 48.578125Q47.84375 48.0 47.0 48.0H43.0Q42.15625 48.0 41.578125 48.578125Q41.0 49.15625 41.0 50.0V54.0Q41.0 54.84375 41.578125 55.421875Q42.15625 56.0 43.0 56.0H47.0Q47.84375 56.0 48.421875 55.421875Q49.0 54.84375 49.0 54.0V53.0H53.0V57.0Q53.0 58.25 53.875 59.125Q54.75 60.0 56.0 60.0H58.0V62.0Q58.0 62.84375 58.578125 63.421875Q59.15625 64.0 60.0 64.0H66.0Q66.84375 64.0 67.421875 63.421875Q68.0 62.84375 68.0 62.0V56.0Q68.0 55.15625 67.421875 54.578125Q66.84375 54.0 66.0 54.0H60.0Q59.15625 54.0 58.578125 54.578125Q58.0 55.15625 58.0 56.0V58.0H56.0Q55.59375 58.0 55.296875 57.703125Q55.0 57.40625 55.0 57.0V47.0Q55.0 46.59375 55.296875 46.296875Q55.59375 46.0 56.0 46.0H58.0V48.0Q58.0 48.84375 58.578125 49.421875Q59.15625 50.0 60.0 50.0ZM47.0 54.0H43.0V50.0H47.0ZM60.0 56.0H66.0V62.0H60.0ZM60.0 42.0H66.0V48.0H60.0Z" fill="#e8566f"/>
+<text x="106" y="50" font-size="27" font-weight="600" fill="#f4f1f3">Project layout</text>
+<text x="107" y="76" font-size="15" fill="#b4adb2">Where to find what</text>
+</svg>

@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="104" viewBox="0 0 880 104" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+<defs>
+  <radialGradient id="g" cx="0.08" cy="0.5" r="0.6">
+    <stop offset="0" stop-color="#d83f5c" stop-opacity="0.30"/>
+    <stop offset="1" stop-color="#d83f5c" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="c"><rect width="880" height="104" rx="18"/></clipPath>
+</defs>
+<g clip-path="url(#c)">
+  <rect width="880" height="104" fill="#151216"/>
+  <rect width="880" height="104" fill="url(#g)"/>
+  <path d="M600 -10Q618 52.0 640 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.105"/>
+<path d="M646 -10Q664 52.0 686 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.135"/>
+<path d="M692 -10Q710 52.0 732 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.165"/>
+<path d="M738 -10Q756 52.0 778 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.195"/>
+<path d="M784 -10Q802 52.0 824 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.225"/>
+<path d="M830 -10Q848 52.0 870 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.255"/>
+<path d="M876 -10Q894 52.0 916 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.285"/>
+</g>
+<rect x="0.5" y="0.5" width="879" height="103" rx="18" fill="none" stroke="#2a2429"/>
+<rect x="28" y="24" width="56" height="56" rx="16" fill="#d83f5c" fill-opacity="0.16" stroke="#d83f5c" stroke-opacity="0.45"/>
+<path d="M68.0 54.0V62.0Q68.0 62.40625 67.703125 62.703125Q67.40625 63.0 67.0 63.0H45.0Q44.59375 63.0 44.296875 62.703125Q44.0 62.40625 44.0 62.0V54.0Q44.0 53.59375 44.296875 53.296875Q44.59375 53.0 45.0 53.0Q45.40625 53.0 45.703125 53.296875Q46.0 53.59375 46.0 54.0V61.0H66.0V54.0Q66.0 53.59375 66.296875 53.296875Q66.59375 53.0 67.0 53.0Q67.40625 53.0 67.703125 53.296875Q68.0 53.59375 68.0 54.0ZM55.28125 54.71875Q55.4375 54.84375 55.609375 54.921875Q55.78125 55.0 56.0 55.0Q56.21875 55.0 56.390625 54.921875Q56.5625 54.84375 56.71875 54.71875L61.71875 49.71875Q61.84375 49.5625 61.921875 49.390625Q62.0 49.21875 62.0 49.0Q62.0 48.59375 61.703125 48.296875Q61.40625 48.0 61.0 48.0Q60.78125 48.0 60.609375 48.078125Q60.4375 48.15625 60.28125 48.28125L57.0 51.59375V40.0Q57.0 39.59375 56.703125 39.296875Q56.40625 39.0 56.0 39.0Q55.59375 39.0 55.296875 39.296875Q55.0 39.59375 55.0 40.0V51.59375L51.71875 48.28125Q51.5625 48.15625 51.390625 48.078125Q51.21875 48.0 51.0 48.0Q50.59375 48.0 50.296875 48.296875Q50.0 48.59375 50.0 49.0Q50.0 49.21875 50.078125 49.390625Q50.15625 49.5625 50.28125 49.71875Z" fill="#e8566f"/>
+<text x="106" y="50" font-size="27" font-weight="600" fill="#f4f1f3">Install</text>
+<text x="107" y="76" font-size="15" fill="#b4adb2">Windows, Linux and Android, updates built in</text>
+</svg>

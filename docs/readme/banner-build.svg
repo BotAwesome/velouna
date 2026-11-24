@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="104" viewBox="0 0 880 104" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+<defs>
+  <radialGradient id="g" cx="0.08" cy="0.5" r="0.6">
+    <stop offset="0" stop-color="#d83f5c" stop-opacity="0.30"/>
+    <stop offset="1" stop-color="#d83f5c" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="c"><rect width="880" height="104" rx="18"/></clipPath>
+</defs>
+<g clip-path="url(#c)">
+  <rect width="880" height="104" fill="#151216"/>
+  <rect width="880" height="104" fill="url(#g)"/>
+  <path d="M600 -10Q618 52.0 640 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.105"/>
+<path d="M646 -10Q664 52.0 686 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.135"/>
+<path d="M692 -10Q710 52.0 732 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.165"/>
+<path d="M738 -10Q756 52.0 778 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.195"/>
+<path d="M784 -10Q802 52.0 824 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.225"/>
+<path d="M830 -10Q848 52.0 870 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.255"/>
+<path d="M876 -10Q894 52.0 916 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.285"/>
+</g>
+<rect x="0.5" y="0.5" width="879" height="103" rx="18" fill="none" stroke="#2a2429"/>
+<rect x="28" y="24" width="56" height="56" rx="16" fill="#d83f5c" fill-opacity="0.16" stroke="#d83f5c" stroke-opacity="0.45"/>
+<path d="M48.625 47.78125 43.5625 52.0 48.625 56.21875Q48.8125 56.375 48.90625 56.578125Q49.0 56.78125 49.0 57.0Q49.0 57.4375 48.71875 57.71875Q48.4375 58.0 48.0 58.0Q47.8125 58.0 47.65625 57.9375Q47.5 57.875 47.34375 57.78125H47.375L41.375 52.78125Q41.1875 52.625 41.09375 52.421875Q41.0 52.21875 41.0 52.0Q41.0 51.78125 41.09375 51.578125Q41.1875 51.375 41.34375 51.21875H41.375L47.375 46.21875Q47.5 46.125 47.65625 46.0625Q47.8125 46.0 48.0 46.0Q48.40625 46.0 48.703125 46.296875Q49.0 46.59375 49.0 47.0Q49.0 47.21875 48.90625 47.421875Q48.8125 47.625 48.65625 47.78125H48.625ZM70.625 51.21875 64.625 46.21875Q64.5 46.125 64.34375 46.0625Q64.1875 46.0 64.0 46.0Q63.59375 46.0 63.296875 46.296875Q63.0 46.59375 63.0 47.0Q63.0 47.21875 63.09375 47.421875Q63.1875 47.625 63.34375 47.78125H63.375L68.4375 52.0L63.375 56.21875Q63.1875 56.375 63.09375 56.578125Q63.0 56.78125 63.0 57.0Q63.0 57.4375 63.28125 57.71875Q63.5625 58.0 64.0 58.0Q64.1875 58.0 64.34375 57.9375Q64.5 57.875 64.65625 57.78125H64.625L70.625 52.78125Q70.8125 52.625 70.90625 52.421875Q71.0 52.21875 71.0 52.0Q71.0 51.78125 70.90625 51.578125Q70.8125 51.375 70.65625 51.21875H70.625ZM60.34375 40.0625Q60.25 40.03125 60.171875 40.015625Q60.09375 40.0 60.0 40.0Q59.6875 40.0 59.421875 40.1875Q59.15625 40.375 59.0625 40.65625L51.0625 62.65625Q51.03125 62.75 51.015625 62.828125Q51.0 62.90625 51.0 63.0Q51.0 63.3125 51.1875 63.578125Q51.375 63.84375 51.65625 63.9375Q51.75 63.96875 51.828125 63.984375Q51.90625 64.0 52.0 64.0Q52.0 64.0 52.0 64.0Q52.0 64.0 52.0 64.0Q52.0 64.0 52.0 64.0Q52.0 64.0 52.0 64.0Q52.3125 64.0 52.578125 63.8125Q52.84375 63.625 52.9375 63.34375L60.9375 41.34375Q60.96875 41.25 60.984375 41.171875Q61.0 41.09375 61.0 41.0Q61.0 40.6875 60.8125 40.421875Q60.625 40.15625 60.34375 40.0625Z" fill="#e8566f"/>
+<text x="106" y="50" font-size="27" font-weight="600" fill="#f4f1f3">Build from source</text>
+<text x="107" y="76" font-size="15" fill="#b4adb2">Rust, egui and libmpv</text>
+</svg>

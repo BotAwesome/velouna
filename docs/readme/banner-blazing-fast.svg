@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="104" viewBox="0 0 880 104" font-family="'Segoe UI', -apple-system, BlinkMacSystemFont, 'Helvetica Neue', Arial, sans-serif">
+<defs>
+  <radialGradient id="g" cx="0.08" cy="0.5" r="0.6">
+    <stop offset="0" stop-color="#d83f5c" stop-opacity="0.30"/>
+    <stop offset="1" stop-color="#d83f5c" stop-opacity="0"/>
+  </radialGradient>
+  <clipPath id="c"><rect width="880" height="104" rx="18"/></clipPath>
+</defs>
+<g clip-path="url(#c)">
+  <rect width="880" height="104" fill="#151216"/>
+  <rect width="880" height="104" fill="url(#g)"/>
+  <path d="M600 -10Q618 52.0 640 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.105"/>
+<path d="M646 -10Q664 52.0 686 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.135"/>
+<path d="M692 -10Q710 52.0 732 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.165"/>
+<path d="M738 -10Q756 52.0 778 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.195"/>
+<path d="M784 -10Q802 52.0 824 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.225"/>
+<path d="M830 -10Q848 52.0 870 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.255"/>
+<path d="M876 -10Q894 52.0 916 114" stroke="#d83f5c" stroke-width="10" fill="none" stroke-linecap="round" opacity="0.285"/>
+</g>
+<rect x="0.5" y="0.5" width="879" height="103" rx="18" fill="none" stroke="#2a2429"/>
+<rect x="28" y="24" width="56" height="56" rx="16" fill="#d83f5c" fill-opacity="0.16" stroke="#d83f5c" stroke-opacity="0.45"/>
+<path d="M66.96875 50.78125Q66.90625 50.53125 66.75 50.34375Q66.59375 50.15625 66.34375 50.0625L59.15625 47.375L60.96875 38.1875Q61.0 38.15625 61.0 38.109375Q61.0 38.0625 61.0 38.0Q61.0 37.59375 60.703125 37.296875Q60.40625 37.0 60.0 37.0Q59.78125 37.0 59.59375 37.09375Q59.40625 37.1875 59.28125 37.3125L45.28125 52.3125Q45.15625 52.46875 45.078125 52.640625Q45.0 52.8125 45.0 53.0Q45.0 53.34375 45.171875 53.59375Q45.34375 53.84375 45.625 53.9375H45.65625L52.84375 56.65625L51.03125 65.8125Q51.0 65.84375 51.0 65.890625Q51.0 65.9375 51.0 66.0Q51.0 66.40625 51.296875 66.703125Q51.59375 67.0 52.0 67.0Q52.21875 67.0 52.40625 66.90625Q52.59375 66.8125 52.71875 66.6875L66.71875 51.6875Q66.84375 51.53125 66.921875 51.359375Q67.0 51.1875 67.0 51.0Q67.0 50.9375 67.0 50.875Q67.0 50.8125 66.96875 50.75V50.78125ZM53.65625 62.75 54.96875 56.1875Q55.0 56.15625 55.0 56.109375Q55.0 56.0625 55.0 56.0Q55.0 55.6875 54.828125 55.4375Q54.65625 55.1875 54.375 55.0625H54.34375L47.75 52.59375L58.3125 41.25L57.03125 47.8125Q57.0 47.84375 57.0 47.890625Q57.0 47.9375 57.0 48.0Q57.0 48.3125 57.171875 48.5625Q57.34375 48.8125 57.625 48.9375H57.65625L64.25 51.40625Z" fill="#e8566f"/>
+<text x="106" y="50" font-size="27" font-weight="600" fill="#f4f1f3">Blazing fast</text>
+<text x="107" y="76" font-size="15" fill="#b4adb2">From double-click to the first frame in about half a second</text>
+</svg>
