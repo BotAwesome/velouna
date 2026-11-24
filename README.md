@@ -50,9 +50,9 @@ start after booting takes a little longer while the system reads Velouna from di
 
 **Playback**<br>
 Nearly every video and audio format via [mpv](https://mpv.io), with hardware decoding. A
-thick seek bar with preview thumbnails, chapter marks and an optional waveform. Resume,
-speed, A-B repeat, sleep timer, picture-in-picture, a 10-band equalizer and a subtitle
-style editor.
+thick seek bar with preview thumbnails, chapter marks and an optional waveform. HDR
+videos play in real HDR when Windows HDR is on. Resume, speed, A-B repeat, sleep timer,
+picture-in-picture, a 10-band equalizer and a subtitle style editor.
 
 </td>
 <td width="50%" valign="top">
@@ -112,8 +112,10 @@ screen, and rearrange the player bar live with drag and drop.
 <td valign="top">
 
 **Everywhere**<br>
-German and English, light and dark theme, your own accent color. Velouna updates itself
-from GitHub releases and shows what changed before it installs anything.
+German and English, light and dark theme, your own accent color. On Windows: media keys
+and the volume overlay, buttons and progress in the taskbar, recent files in the jump
+list. Velouna updates itself from GitHub releases and shows what changed before it
+installs anything.
 
 </td>
 </tr>
@@ -140,7 +142,7 @@ More on the [website](https://botawesome.github.io/velouna/#screenshots).
   <img src="docs/screenshots/phone-tv.png" width="24%" alt="TV channels with what's on now">
 </p>
 
-The videos in these screenshots are generated with FFmpeg (fractals and cellular automata).
+The videos in these screenshots are generated with FFmpeg.
 
 ## Install
 
@@ -213,7 +215,8 @@ up from there.
 | Path | What |
 |---|---|
 | `src/` | The app (egui), shared by Windows, Linux and Android |
-| `src/plex/` | Plex sign-in, browsing and playback |
+| `src/plex/` | Plex, Jellyfin and Emby: sign-in, browsing and playback |
+| `src/platform/` | Windows integration (media keys, taskbar, jump list, HDR output) |
 | `src/iptv.rs`, `src/epg.rs`, `src/radio.rs` | Public TV, program guide and radio directory |
 | `setup/` | The installer and uninstaller |
 | `android/` | Android project (NativeActivity) and build script |
