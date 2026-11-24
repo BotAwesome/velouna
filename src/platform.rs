@@ -3,6 +3,11 @@
 
 #[cfg(target_os = "android")]
 pub mod android;
+#[cfg(windows)]
+pub mod win;
+
+/// The window is minimized: mpv's wakeups repaint only now and then.
+pub static BACKGROUND: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 /// True on phones/tablets (touch-first UI, no window chrome).
 #[allow(dead_code)]

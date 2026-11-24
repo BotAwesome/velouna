@@ -124,10 +124,11 @@ pub enum ControlItem {
     Bookmark,
     FrameStep,
     Record,
+    Chapters,
 }
 
 impl ControlItem {
-    pub const ALL: [ControlItem; 20] = [
+    pub const ALL: [ControlItem; 21] = [
         ControlItem::Prev,
         ControlItem::Play,
         ControlItem::Next,
@@ -148,6 +149,7 @@ impl ControlItem {
         ControlItem::Bookmark,
         ControlItem::FrameStep,
         ControlItem::Record,
+        ControlItem::Chapters,
     ];
     pub fn label(self) -> &'static str {
         match self {
@@ -171,6 +173,7 @@ impl ControlItem {
             ControlItem::Bookmark => t!("Lesezeichen"),
             ControlItem::FrameStep => t!("Einzelbild"),
             ControlItem::Record => t!("Aufnahme"),
+            ControlItem::Chapters => t!("Kapitel"),
         }
     }
 }
@@ -259,7 +262,7 @@ pub struct ControlLayout {
 impl Default for ControlLayout {
     fn default() -> Self {
         use ControlItem::*;
-        Self { left: vec![Prev, Play, Next, Time], right: vec![Duration, Volume, Audio, Subtitles, Loop, Adjustments, Queue] }
+        Self { left: vec![Prev, Play, Next, Time], right: vec![Duration, Volume, Chapters, Audio, Subtitles, Loop, Adjustments, Queue] }
     }
 }
 
@@ -272,7 +275,7 @@ impl ControlLayout {
         use ControlItem::*;
         Self {
             left: vec![Stop, Prev, Play, Next, FrameStep, Time],
-            right: vec![Duration, Speed, Loop, Shuffle, Bookmark, Screenshot, Volume, Audio, Subtitles, Adjustments, Queue],
+            right: vec![Duration, Speed, Loop, Shuffle, Bookmark, Chapters, Screenshot, Volume, Audio, Subtitles, Adjustments, Queue],
         }
     }
 }
@@ -643,6 +646,26 @@ pub struct HistoryEntry {
     /// Channel / station logo (live entries).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub logo: Option<String>,
+    /// Played from a plugin source: the plugin and its item, so "Continue"
+    /// can ask the plugin again (its stream addresses may expire).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ext: Option<ExtRef>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq)]
+pub struct ExtRef {
+    pub plugin: String,
+    pub item: serde_json::Value,
+}
+
+impl ExtRef {
+    /// The same item of the same plugin, whatever address it played from.
+    pub fn same(&self, o: &ExtRef) -> bool {
+        let key = |i: &serde_json::Value| {
+            i.get("id").filter(|v| !v.is_null()).map(|v| v.to_string()).unwrap_or_else(|| format!("{}|{}", i["source"], i["title"]))
+        };
+        self.plugin == o.plugin && key(&self.item) == key(&o.item)
+    }
 }
 
 impl HistoryEntry {
@@ -655,10 +678,18 @@ impl HistoryEntry {
         }
         if self.duration > 0.0 { (self.position / self.duration).clamp(0.0, 1.0) as f32 } else { 0.0 }
     }
+    /// A song: audio shorter than `LONG_AUDIO`. Songs never resume and show
+    /// no progress; podcasts and audiobooks do.
+    pub fn is_song(&self) -> bool {
+        self.audio_only && self.duration < LONG_AUDIO
+    }
     pub fn resumable(&self) -> bool {
         !self.live && !self.finished && self.position > 10.0 && (self.duration <= 0.0 || self.position < self.duration - 15.0)
     }
 }
+
+/// Audio at least this long (seconds) resumes like a video.
+pub const LONG_AUDIO: f64 = 1200.0;
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct Bookmark {
@@ -838,11 +869,16 @@ impl Data {
         }
         // Default folders from before the rename still carry the working title.
         let s = &mut d.settings;
-        // The default player bar before 0.2.0 had no repeat button: a bar
-        // that was never changed gets the new default.
+        // Earlier default player bars (no repeat button before 0.2.0, no
+        // chapters button before 0.4.1): a bar that was never changed gets
+        // the new default.
         {
             use ControlItem::*;
-            let old: [&[ControlItem]; 2] = [&[Duration, Volume, Audio, Subtitles, Adjustments, Queue], &[Duration, Volume, Audio, Subtitles, Adjustments, Loop, Queue]];
+            let old: [&[ControlItem]; 3] = [
+                &[Duration, Volume, Audio, Subtitles, Adjustments, Queue],
+                &[Duration, Volume, Audio, Subtitles, Adjustments, Loop, Queue],
+                &[Duration, Volume, Audio, Subtitles, Loop, Adjustments, Queue],
+            ];
             if s.layout.left == [Prev, Play, Next, Time] && old.contains(&s.layout.right.as_slice()) {
                 s.layout = ControlLayout::default();
             }

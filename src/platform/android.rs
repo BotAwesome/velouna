@@ -436,3 +436,31 @@ fn media_loop(m: std::sync::Arc<crate::mpv::Mpv>) {
         shown = Some(now);
     }
 }
+
+/// Tags, duration and size of a media file from Android (JSON), for when
+/// there is no ffprobe.
+pub fn probe_media(path: &str) -> Option<String> {
+    with_activity(|env, activity| {
+        let s = env.new_string(path)?;
+        let o = env.call_method(activity, "probeMedia", "(Ljava/lang/String;)Ljava/lang/String;", &[JValue::Object(&s)])?.l()?;
+        if o.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(env.get_string(&jni::objects::JString::from(o))?.into()))
+    })
+    .flatten()
+}
+
+/// One video frame near `secs`, at most `w`×`h`, encoded as JPEG.
+pub fn video_frame(path: &str, secs: f64, w: usize, h: usize) -> Option<Vec<u8>> {
+    with_activity(|env, activity| {
+        let s = env.new_string(path)?;
+        let args = [JValue::Object(&s), JValue::Long((secs * 1e6) as i64), JValue::Int(w as i32), JValue::Int(h as i32)];
+        let o = env.call_method(activity, "videoFrame", "(Ljava/lang/String;JII)[B", &args)?.l()?;
+        if o.is_null() {
+            return Ok(None);
+        }
+        Ok(Some(env.convert_byte_array(jni::objects::JByteArray::from(o))?))
+    })
+    .flatten()
+}

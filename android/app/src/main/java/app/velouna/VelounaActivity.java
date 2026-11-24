@@ -670,4 +670,67 @@ public class VelounaActivity extends NativeActivity {
             }
         });
     }
+
+    // ---- media info without ffmpeg ------------------------------------
+
+    private android.media.MediaMetadataRetriever retriever(String path) throws Exception {
+        android.media.MediaMetadataRetriever r = new android.media.MediaMetadataRetriever();
+        if (path.startsWith("content://")) r.setDataSource(this, android.net.Uri.parse(path));
+        else r.setDataSource(path);
+        return r;
+    }
+
+    /** Tags, duration and size of a file as JSON, or null. */
+    public String probeMedia(String path) {
+        android.media.MediaMetadataRetriever r = null;
+        try {
+            r = retriever(path);
+            org.json.JSONObject o = new org.json.JSONObject();
+            int[][] keys = {
+                {android.media.MediaMetadataRetriever.METADATA_KEY_TITLE, 0},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_ARTIST, 1},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_ALBUMARTIST, 2},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_ALBUM, 3},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_GENRE, 4},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_CD_TRACK_NUMBER, 5},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_DURATION, 6},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH, 7},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT, 8},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_HAS_VIDEO, 9},
+                {android.media.MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION, 10},
+            };
+            String[] names = {"title", "artist", "album_artist", "album", "genre", "track", "duration_ms", "width", "height", "has_video", "rotation"};
+            for (int[] k : keys) {
+                String v = r.extractMetadata(k[0]);
+                if (v != null) o.put(names[k[1]], v);
+            }
+            o.put("has_cover", r.getEmbeddedPicture() != null);
+            return o.toString();
+        } catch (Throwable e) {
+            return null;
+        } finally {
+            if (r != null) try { r.release(); } catch (Throwable ignored) {}
+        }
+    }
+
+    /** One video frame near `us`, at most w×h, as JPEG bytes, or null. */
+    public byte[] videoFrame(String path, long us, int w, int h) {
+        android.media.MediaMetadataRetriever r = null;
+        try {
+            r = retriever(path);
+            int opt = android.media.MediaMetadataRetriever.OPTION_CLOSEST_SYNC;
+            android.graphics.Bitmap b = Build.VERSION.SDK_INT >= 27
+                    ? r.getScaledFrameAtTime(us, opt, w, h)
+                    : r.getFrameAtTime(us, opt);
+            if (b == null) return null;
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            b.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out);
+            b.recycle();
+            return out.toByteArray();
+        } catch (Throwable e) {
+            return null;
+        } finally {
+            if (r != null) try { r.release(); } catch (Throwable ignored) {}
+        }
+    }
 }

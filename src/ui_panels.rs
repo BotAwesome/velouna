@@ -892,6 +892,8 @@ impl App {
                 let label = format!("{}   {}", media::fmt_time(ch.time), if ch.title.is_empty() { tf!("Kapitel {}", i + 1) } else { ch.title.clone() });
                 if widgets::check_row(ui, &t, &label, st.chapter == i as i64).clicked() {
                     c.seek_abs(ch.time, true);
+                    // a chosen chapter plays
+                    c.set_pause(false);
                 }
             }
         });

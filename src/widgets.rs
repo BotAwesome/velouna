@@ -92,6 +92,26 @@ pub fn menu_item(ui: &mut Ui, t: &Theme, icon: &str, label: &str, right: &str, c
     resp.on_hover_cursor(CursorIcon::PointingHand)
 }
 
+/// A row that opens a submenu, drawn like `menu_item` (same width and
+/// spacing) with an arrow on the right. `label` is "icon   text".
+pub fn submenu<R>(ui: &mut Ui, t: &Theme, label: &str, content: impl FnOnce(&mut Ui) -> R) -> Response {
+    let (icon, text) = label.split_once("   ").unwrap_or(("", label));
+    let w = ui.available_width().clamp(200.0, 340.0);
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, 30.0), Sense::click());
+    let bg = ui.painter().add(egui::Shape::Noop);
+    let p = ui.painter();
+    if !icon.is_empty() {
+        p.text(pos2(rect.left() + 16.0, rect.center().y), Align2::CENTER_CENTER, icon, theme::icon(16.0), t.text_dim);
+    }
+    p.text(pos2(rect.left() + 34.0, rect.center().y), Align2::LEFT_CENTER, text, FontId::proportional(13.5), t.text);
+    p.text(pos2(rect.right() - 14.0, rect.center().y), Align2::CENTER_CENTER, egui_phosphor::regular::CARET_RIGHT, theme::icon(13.0), t.text_faint);
+    let open = egui::containers::menu::SubMenu::new().show(ui, &resp, content).is_some();
+    if open || resp.hovered() {
+        ui.painter().set(bg, egui::Shape::rect_filled(rect, CornerRadius::same(theme::R), t.hover));
+    }
+    resp
+}
+
 /// Selectable row with a check mark on the left (track lists).
 pub fn check_row(ui: &mut Ui, t: &Theme, label: &str, checked: bool) -> Response {
     let w = ui.available_width().clamp(160.0, 340.0);
@@ -453,7 +473,9 @@ pub fn setting_row(ui: &mut Ui, t: &Theme, label: &str, info: &str, add: impl Fn
 }
 
 pub fn separator(ui: &mut Ui, t: &Theme) {
-    let w = ui.available_width();
+    // as wide as the rows above, not the whole popup: a line that takes all
+    // the room would keep a menu as wide as it ever was
+    let w = if egui::containers::menu::is_in_menu(ui) { ui.available_width().min(ui.min_rect().width().max(200.0)) } else { ui.available_width() };
     let (r, _) = ui.allocate_exact_size(vec2(w, 9.0), Sense::hover());
     ui.painter().line_segment([pos2(r.left(), r.center().y), pos2(r.right(), r.center().y)], Stroke::new(1.0, t.border));
 }

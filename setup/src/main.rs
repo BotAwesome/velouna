@@ -573,6 +573,14 @@ impl Setup {
             tx("Du findest Velouna ab jetzt im Startmenü. Viel Spaß beim Schauen!", "You'll find Velouna in the Start menu from now on. Enjoy watching!"),
         );
         let (close, launch) = footer_buttons(footer, 110.0, 160.0);
+        if self.opts.open_with {
+            // Windows only lets the user pick the default player: open its
+            // page for Velouna instead of just listing it under "Open with".
+            let r = Rect::from_min_size(pos2(footer.left(), close.top()), vec2(230.0, close.height()));
+            if button(ui, r, tx("Als Standard-Player wählen…", "Make default player…"), Kind::Ghost).clicked() {
+                let _ = std::process::Command::new("explorer.exe").arg("ms-settings:defaultapps?registeredAppUser=Velouna").spawn();
+            }
+        }
         if button(ui, close, tx("Schließen", "Close"), Kind::Ghost).clicked() {
             ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
         }

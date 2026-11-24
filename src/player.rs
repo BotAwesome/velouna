@@ -388,7 +388,12 @@ impl PlayerState {
             }
             "ab-loop-a" => self.ab_a = opt_time(v),
             "ab-loop-b" => self.ab_b = opt_time(v),
-            "hwdec-current" => self.hwdec = v.as_str().unwrap_or("").to_string(),
+            "hwdec-current" => {
+                self.hwdec = v.as_str().unwrap_or("").to_string();
+                if !self.hwdec.is_empty() {
+                    log::info!("hwdec: {}", self.hwdec);
+                }
+            }
             "container-fps" => self.fps = f(0.0),
             "video-codec" => self.video_codec = v.as_str().unwrap_or("").to_string(),
             "audio-codec-name" => self.audio_codec = v.as_str().unwrap_or("").to_string(),
@@ -430,6 +435,12 @@ impl PlayerState {
     /// just repeats the station name.
     pub fn now_playing(&self) -> Option<&str> {
         self.meta("icy-title").map(str::trim).filter(|s| !s.is_empty() && *s != self.media_title.trim() && *s != "-")
+    }
+
+    /// A stream without a length: live TV or radio. Nothing to seek,
+    /// repeat or speed up.
+    pub fn is_live(&self) -> bool {
+        self.has_media() && crate::media::is_url(&self.path) && self.duration <= 0.0
     }
 
     pub fn is_audio_only(&self) -> bool {

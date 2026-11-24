@@ -436,10 +436,187 @@ fn extract_frame(ffmpeg: &Path, path: &str, at: f64, w: usize, h: usize, fast: b
     if out.len() == w * h * 4 { Some(out) } else { None }
 }
 
+/// Android decodes frames and reads tags itself (no ffmpeg there).
+const SYSTEM_FRAMES: bool = cfg!(target_os = "android");
+
+/// A frame as `w`×`h` RGBA with dark bars: ffmpeg when there is one,
+/// otherwise the system's decoder.
+pub fn any_frame(ffmpeg: Option<&Path>, path: &str, at: f64, w: usize, h: usize, fast: bool) -> Option<Vec<u8>> {
+    if let Some(ff) = ffmpeg {
+        return extract_frame(ff, path, at, w, h, fast);
+    }
+    #[cfg(target_os = "android")]
+    {
+        let jpg = crate::platform::android::video_frame(path, at, w, h)?;
+        return fit_rgba(&image::load_from_memory(&jpg).ok()?, w, h);
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = (path, at, w, h, fast);
+        None
+    }
+}
+
+/// `img` scaled into `w`×`h`, centred on dark bars, as RGBA.
+pub fn fit_rgba(img: &image::DynamicImage, w: usize, h: usize) -> Option<Vec<u8>> {
+    let fit = img.resize(w as u32, h as u32, image::imageops::FilterType::Triangle).to_rgba8();
+    let mut out = image::RgbaImage::from_pixel(w as u32, h as u32, image::Rgba([0x10, 0x10, 0x10, 0xFF]));
+    let (x, y) = ((w as u32 - fit.width()) / 2, (h as u32 - fit.height()) / 2);
+    image::imageops::overlay(&mut out, &fit, x as i64, y as i64);
+    Some(out.into_raw())
+}
+
+/// Tags, length and size from the system (Android), for when there is no
+/// ffprobe. Songs without tags in Android's reader fall back to the file.
+fn system_probe(path: &str) -> Option<ProbeInfo> {
+    #[cfg(target_os = "android")]
+    {
+        let j: serde_json::Value = serde_json::from_str(&crate::platform::android::probe_media(path)?).ok()?;
+        let s = |k: &str| j[k].as_str().map(str::trim).filter(|v| !v.is_empty()).map(str::to_string);
+        let n = |k: &str| s(k).and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.0);
+        let rot = n("rotation") as i64;
+        let (w, h) = (n("width") as u32, n("height") as u32);
+        let (width, height) = if rot == 90 || rot == 270 { (h, w) } else { (w, h) };
+        return Some(ProbeInfo {
+            duration: n("duration_ms") / 1000.0,
+            title: s("title"),
+            artist: s("artist").or_else(|| s("album_artist")),
+            album: s("album"),
+            genre: s("genre"),
+            track: s("track").and_then(|t| t.split('/').next().and_then(|v| v.trim().parse().ok())),
+            has_video: s("has_video").as_deref() == Some("yes"),
+            has_cover: j["has_cover"].as_bool().unwrap_or(false),
+            width,
+            height,
+            mtime: mtime(path),
+        });
+    }
+    #[allow(unreachable_code)]
+    {
+        let _ = path;
+        None
+    }
+}
+
 /// The embedded cover of `path` as a `size`×`size` RGBA square (a cover
 /// that isn't square gets dark bars).
-pub fn cover_art(ffmpeg: &Path, path: &str, size: usize) -> Option<Vec<u8>> {
-    extract_frame(ffmpeg, path, 0.0, size, size, false)
+pub fn cover_art(ffmpeg: Option<&Path>, path: &str, size: usize) -> Option<Vec<u8>> {
+    native_cover(path, size, size).or_else(|| extract_frame(ffmpeg?, path, 0.0, size, size, false))
+}
+
+/// The embedded cover read straight from the file (ID3v2, FLAC, MP4), fitted
+/// into `w`×`h` with dark bars. Works without ffmpeg (Android).
+pub fn native_cover(path: &str, w: usize, h: usize) -> Option<Vec<u8>> {
+    let bytes = embedded_picture(path)?;
+    fit_rgba(&image::load_from_memory(&bytes).ok()?, w, h)
+}
+
+/// Raw bytes of the first embedded picture of an audio file.
+fn embedded_picture(path: &str) -> Option<Vec<u8>> {
+    use std::io::Read;
+    let mut f = std::fs::File::open(path).ok()?;
+    let mut head = [0u8; 12];
+    f.read_exact(&mut head).ok()?;
+    let be32 = |b: &[u8]| u32::from_be_bytes([b[0], b[1], b[2], b[3]]) as usize;
+    let syncsafe = |b: &[u8]| (b[0] as usize) << 21 | (b[1] as usize) << 14 | (b[2] as usize) << 7 | b[3] as usize;
+    let read_all = |f: &mut std::fs::File, n: usize| -> Option<Vec<u8>> {
+        let mut v = Vec::new();
+        f.take(n as u64).read_to_end(&mut v).ok()?;
+        Some(v)
+    };
+    let cut = |b: &[u8], from: usize| -> Option<usize> { b.get(from..)?.iter().position(|&c| c == 0).map(|p| from + p) };
+    if &head[..3] == b"ID3" {
+        let ver = head[3];
+        let size = syncsafe(&head[6..10]);
+        let mut tag = head[10..].to_vec();
+        tag.extend(read_all(&mut f, size.saturating_sub(2))?);
+        let mut i = 0;
+        if ver >= 3 && head[5] & 0x40 != 0 {
+            let n = if ver == 4 { syncsafe(tag.get(0..4)?) } else { be32(tag.get(0..4)?) + 4 };
+            i = n;
+        }
+        while i + 10 <= tag.len() {
+            let (id, len, hdr) = if ver == 2 {
+                (&tag[i..i + 3], (tag[i + 3] as usize) << 16 | (tag[i + 4] as usize) << 8 | tag[i + 5] as usize, 6)
+            } else if ver == 4 {
+                (&tag[i..i + 4], syncsafe(&tag[i + 4..i + 8]), 10)
+            } else {
+                (&tag[i..i + 4], be32(&tag[i + 4..i + 8]), 10)
+            };
+            if id[0] == 0 || len == 0 {
+                break;
+            }
+            let body = tag.get(i + hdr..i + hdr + len)?;
+            if id == b"APIC" || id == b"PIC" {
+                let enc = body[0];
+                let after_mime = if id == b"PIC" { 4 } else { cut(body, 1)? + 1 };
+                let desc_from = after_mime + 1; // picture type
+                let data = if enc == 1 || enc == 2 {
+                    let mut k = desc_from;
+                    while k + 1 < body.len() && !(body[k] == 0 && body[k + 1] == 0) {
+                        k += 2;
+                    }
+                    k + 2
+                } else {
+                    cut(body, desc_from)? + 1
+                };
+                return body.get(data..).map(<[u8]>::to_vec);
+            }
+            i += hdr + len;
+        }
+        return None;
+    }
+    if &head[..4] == b"fLaC" {
+        let mut buf = head[4..].to_vec();
+        buf.extend(read_all(&mut f, 16 << 20)?);
+        let mut i = 0;
+        while i + 4 <= buf.len() {
+            let (last, kind, len) = (buf[i] & 0x80 != 0, buf[i] & 0x7F, (buf[i + 1] as usize) << 16 | (buf[i + 2] as usize) << 8 | buf[i + 3] as usize);
+            let body = buf.get(i + 4..i + 4 + len)?;
+            if kind == 6 {
+                let mut k = 4;
+                let ml = be32(body.get(k..k + 4)?);
+                k += 4 + ml;
+                let dl = be32(body.get(k..k + 4)?);
+                k += 4 + dl + 16;
+                let n = be32(body.get(k..k + 4)?);
+                return body.get(k + 4..k + 4 + n).map(<[u8]>::to_vec);
+            }
+            if last {
+                break;
+            }
+            i += 4 + len;
+        }
+        return None;
+    }
+    if &head[4..8] == b"ftyp" {
+        let mut buf = head.to_vec();
+        buf.extend(read_all(&mut f, 64 << 20)?);
+        // walk moov/udta/meta/ilst/covr/data
+        fn find<'a>(b: &'a [u8], path: &[&[u8; 4]]) -> Option<&'a [u8]> {
+            let mut i = 0;
+            while i + 8 <= b.len() {
+                let size = u32::from_be_bytes([b[i], b[i + 1], b[i + 2], b[i + 3]]) as usize;
+                if size < 8 {
+                    return None;
+                }
+                let name = &b[i + 4..i + 8];
+                let body = b.get(i + 8..(i + size).min(b.len()))?;
+                if name == path[0] {
+                    if path.len() == 1 {
+                        return Some(body);
+                    }
+                    let inner = if name == b"meta" { body.get(4..)? } else { body };
+                    return find(inner, &path[1..]);
+                }
+                i += size;
+            }
+            None
+        }
+        let data = find(&buf, &[b"moov", b"udta", b"meta", b"ilst", b"covr", b"data"])?;
+        return data.get(8..).map(<[u8]>::to_vec);
+    }
+    None
 }
 
 fn probe(ffprobe: &Path, path: &str) -> Option<ProbeInfo> {
@@ -495,8 +672,8 @@ impl MediaTools {
         let ffmpeg = find_tool("ffmpeg");
         let ffprobe = find_tool("ffprobe");
         let (tx, results) = channel::<MediaResult>();
-        let mut jobs = None;
-        if ffmpeg.is_some() || ffprobe.is_some() {
+        let jobs;
+        {
             let (jtx, jrx) = channel::<Job>();
             let jrx = Arc::new(Mutex::new(jrx));
             for _ in 0..3 {
@@ -516,9 +693,20 @@ impl MediaTools {
                         };
                         match job {
                             Job::Probe(p) => {
-                                if let Some(fp) = &ffprobe {
-                                    let info = probe(fp, &p).unwrap_or_default();
-                                    let _ = tx.send(MediaResult::Probe(p, info));
+                                let info = match &ffprobe {
+                                    // Windows: songs' tags and length from the shell
+                                    // (no process per file); videos still via ffprobe
+                                    #[cfg(windows)]
+                                    Some(_) if is_audio(&p) && let Some(mut i) = crate::platform::win::shell_props(&p).filter(|i| i.duration > 0.0) => {
+                                        i.has_cover = embedded_picture(&p).is_some();
+                                        i.mtime = mtime(&p);
+                                        Some(i)
+                                    }
+                                    Some(fp) => probe(fp, &p),
+                                    None => system_probe(&p),
+                                };
+                                if ffprobe.is_some() || info.is_some() {
+                                    let _ = tx.send(MediaResult::Probe(p, info.unwrap_or_default()));
                                 }
                             }
                             Job::Thumb { path, key } => {
@@ -537,7 +725,8 @@ impl MediaTools {
         }
         let seek_req: Arc<(Mutex<Option<(String, f64, String)>>, Condvar)> =
             Arc::new((Mutex::new(None), Condvar::new()));
-        if let Some(ff) = ffmpeg.clone() {
+        if ffmpeg.is_some() || SYSTEM_FRAMES {
+            let ff = ffmpeg.clone();
             let req = seek_req.clone();
             let tx = tx.clone();
             let ctx = ctx.clone();
@@ -551,7 +740,7 @@ impl MediaTools {
                         }
                         g.take().unwrap()
                     };
-                    if let Some(rgba) = extract_frame(&ff, &path, t, SEEK_W, SEEK_H, true) {
+                    if let Some(rgba) = any_frame(ff.as_deref(), &path, t, SEEK_W, SEEK_H, true) {
                         let _ = tx.send(MediaResult::SeekThumb { key, w: SEEK_W, h: SEEK_H, rgba });
                         ctx.request_repaint();
                     }
@@ -582,13 +771,19 @@ impl MediaTools {
         self.ffmpeg.is_some()
     }
 
+    /// Whether video frames (thumbnails, seek previews) can be made: with
+    /// ffmpeg, or by the system on Android.
+    pub fn frames(&self) -> bool {
+        self.ffmpeg.is_some() || SYSTEM_FRAMES
+    }
+
     pub fn request_probe(&mut self, path: &str) -> Option<&ProbeInfo> {
         if is_url(path) {
             return None;
         }
         if !self.probe_cache.contains_key(path) && !self.probe_pending.contains(path) {
             if let Some(j) = &self.jobs {
-                if self.ffprobe.is_some() {
+                if self.ffprobe.is_some() || SYSTEM_FRAMES {
                     self.probe_pending.insert(path.to_string());
                     let _ = j.send(Job::Probe(path.to_string()));
                 }
@@ -628,7 +823,7 @@ impl MediaTools {
     }
 
     pub fn request_seek_thumb(&self, path: &str, t: f64, key: String) {
-        if self.ffmpeg.is_none() {
+        if !self.frames() {
             return;
         }
         let (m, cv) = &*self.seek_req;
@@ -758,17 +953,75 @@ impl MediaTools {
     }
 }
 
+#[cfg(windows)]
+/// A picture of `path` for the Windows media overlay: its cover written to
+/// the cache, or its library thumbnail.
+pub fn overlay_picture(path: &str) -> Option<String> {
+    if is_url(path) {
+        return None;
+    }
+    if is_audio(path) {
+        let file = crate::config::cache_dir().join("overlay").join(format!("{:016x}.img", hash_str(path)));
+        if !file.exists() {
+            let Some(bytes) = embedded_picture(path) else { return velouna_cover() };
+            std::fs::create_dir_all(file.parent()?).ok()?;
+            std::fs::write(&file, bytes).ok()?;
+        }
+        return Some(file.to_string_lossy().to_string());
+    }
+    let f = thumb_file(&MediaTools::thumb_key(path));
+    f.exists().then(|| f.to_string_lossy().to_string())
+}
+
+#[cfg(windows)]
+/// The Velouna cover (the app icon) as a PNG in the cache, for songs
+/// without a picture of their own.
+fn velouna_cover() -> Option<String> {
+    let file = crate::config::cache_dir().join("overlay").join("velouna.png");
+    if !file.exists() {
+        let n = 256;
+        let img = image::RgbaImage::from_raw(n as u32, n as u32, crate::logo::logo_rasterize(n))?;
+        std::fs::create_dir_all(file.parent()?).ok()?;
+        img.save(&file).ok()?;
+    }
+    Some(file.to_string_lossy().to_string())
+}
+
 fn thumb_job(ffmpeg: Option<&Path>, ffprobe: Option<&Path>, path: &str) -> Option<Vec<u8>> {
-    let ff = ffmpeg?;
+    if is_audio(path) {
+        if let Some(rgba) = native_cover(path, THUMB_W, THUMB_H) {
+            save_thumb(&MediaTools::thumb_key(path), &rgba);
+            return Some(rgba);
+        }
+    }
+    // Windows: the thumbnail Explorer has (or makes) is much faster than
+    // starting ffmpeg for every file
+    #[cfg(windows)]
+    if !is_audio(path) {
+        if let Some((px, w, h)) = crate::platform::win::shell_thumb(path, THUMB_W as i32) {
+            if let Some(rgba) = image::RgbaImage::from_raw(w as u32, h as u32, px).and_then(|img| fit_rgba(&image::DynamicImage::ImageRgba8(img), THUMB_W, THUMB_H)) {
+                save_thumb(&MediaTools::thumb_key(path), &rgba);
+                return Some(rgba);
+            }
+        }
+    }
+    if ffmpeg.is_none() && (!SYSTEM_FRAMES || is_audio(path)) {
+        return None;
+    }
     let at = if is_audio(path) {
         0.0
     } else {
-        let d = ffprobe.and_then(|fp| probe(fp, path)).map(|p| p.duration).unwrap_or(0.0);
+        let d = match ffprobe {
+            Some(fp) => probe(fp, path),
+            None => system_probe(path),
+        };
+        let d = d.map(|p| p.duration).unwrap_or(0.0);
         if d > 0.0 { (d * 0.15).min(120.0) } else { 0.0 }
     };
-    let rgba = extract_frame(ff, path, at, THUMB_W, THUMB_H, false).or_else(|| {
-        if at > 0.0 { extract_frame(ff, path, 0.0, THUMB_W, THUMB_H, false) } else { None }
-    })?;
+    // keyframes only: much faster on long files, the exact frame doesn't matter
+    let rgba = any_frame(ffmpeg, path, at, THUMB_W, THUMB_H, true)
+        .or_else(|| any_frame(ffmpeg, path, at, THUMB_W, THUMB_H, false))
+        .or_else(|| if at > 0.0 { any_frame(ffmpeg, path, 0.0, THUMB_W, THUMB_H, false) } else { None })?;
     save_thumb(&MediaTools::thumb_key(path), &rgba);
     Some(rgba)
 }

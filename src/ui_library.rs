@@ -117,7 +117,7 @@ impl App {
     }
 
     pub(crate) fn thumb_for(&mut self, ctx: &egui::Context, path: &str) -> Option<TextureId> {
-        if media::is_url(path) || !self.tools.available() {
+        if media::is_url(path) || (!self.tools.frames() && !media::is_audio(path)) {
             return None;
         }
         let key = self.thumb_keys.entry(path.to_string()).or_insert_with(|| MediaTools::thumb_key(path)).clone();
@@ -318,6 +318,8 @@ impl App {
                         kind: Kind::File(h.path.clone()),
                         sub: if h.live {
                             live_label(&h)
+                        } else if h.is_song() {
+                            media::fmt_time_short(h.duration)
                         } else if h.duration > 0.0 {
                             format!("{} / {}", media::fmt_time_short(h.position), media::fmt_time_short(h.duration))
                         } else {
@@ -1624,7 +1626,7 @@ impl App {
         let ctx = ui.ctx().clone();
         let mut hist = self.data.history.clone();
         hist.sort_by(|a, b| b.last_played.cmp(&a.last_played));
-        let cont: Vec<_> = hist.iter().filter(|h| h.resumable() && !media::is_url(&h.path) && Path::new(&h.path).exists()).take(8).cloned().collect();
+        let cont: Vec<_> = hist.iter().filter(|h| h.resumable() && !(media::is_audio(&h.path) && h.duration < crate::config::LONG_AUDIO) && (h.ext.is_some() || (!media::is_url(&h.path) && Path::new(&h.path).exists()))).take(8).cloned().collect();
         let recent: Vec<_> = hist.iter().take(10).cloned().collect();
         let empty = hist.is_empty() && self.data.playlists.is_empty();
 
@@ -1678,6 +1680,7 @@ impl App {
             if !cont.is_empty() {
                 section_title(ui, &t, t!("Weiterschauen"));
                 let mut play: Option<(String, f64)> = None;
+                let mut play_ext: Option<(crate::config::ExtRef, f64)> = None;
                 egui::ScrollArea::horizontal().id_salt("cont").show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 14.0;
@@ -1700,7 +1703,10 @@ impl App {
                                 ui.painter().text(c.center(), Align2::CENTER_CENTER, ph::PLAY, theme::fill_icon(16.0), t.on_accent);
                             }
                             widgets::painter_text_trunc(ui.painter(), pos2(rect.left() + 2.0, img.bottom() + 7.0), &h.title, FontId::proportional(13.0), t.text, cw - 4.0);
-                            let folder = media::parent_folder_name(&h.path).unwrap_or_default();
+                            let folder = match &h.ext {
+                                Some(e) => self.ext.get(&e.plugin).map(|r| r.name.clone()).unwrap_or_else(|| e.plugin.clone()),
+                                None => media::parent_folder_name(&h.path).unwrap_or_default(),
+                            };
                             widgets::painter_text_trunc(
                                 ui.painter(),
                                 pos2(rect.left() + 2.0, img.bottom() + 26.0),
@@ -1710,11 +1716,21 @@ impl App {
                                 cw - 4.0,
                             );
                             if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
-                                play = Some((h.path.clone(), h.position));
+                                match &h.ext {
+                                    Some(e) => play_ext = Some((e.clone(), h.position)),
+                                    None => play = Some((h.path.clone(), h.position)),
+                                }
                             }
                         }
                     });
                 });
+                if let Some((e, pos)) = play_ext {
+                    // ask the plugin again: its addresses may have expired
+                    let mut item = e.item.clone();
+                    item["_start"] = serde_json::json!(pos);
+                    let src = item["source"].as_str().unwrap_or_default().to_string();
+                    self.ext_play(&e.plugin, &src, item, "replace");
+                }
                 if let Some((path, _pos)) = play {
                     let prev = self.data.settings.resume;
                     self.data.settings.resume = crate::config::ResumeMode::Always;
@@ -1814,7 +1830,8 @@ impl App {
                         ui.painter().text(pos2(rect.left() + 18.0, rect.center().y), Align2::CENTER_CENTER, icon, theme::icon(16.0), t.text_dim);
                     }
                     let folder = if h.live { live_label(h) } else { media::parent_folder_name(&h.path).unwrap_or_else(|| "Stream".into()) };
-                    let status = if h.live {
+                    // Songs are listened to again and again: no "watched" or progress.
+                    let status = if h.live || h.is_song() {
                         String::new()
                     } else if h.finished {
                         t!("gesehen").to_string()

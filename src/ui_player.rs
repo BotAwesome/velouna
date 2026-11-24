@@ -45,6 +45,9 @@ impl App {
         let ptr = ctx.input(|i| i.pointer.hover_pos());
         let near = ptr.map(|p| p.y < TOP_H + 24.0 || p.y > screen.bottom() - BOTTOM_H - 70.0).unwrap_or(false);
         let popup_open = egui::Popup::is_any_open(ctx) || self.seek_drag.is_some();
+        if ctx.input(|i| i.pointer.any_pressed()) {
+            self.press_closes_popup = egui::Popup::is_any_open(ctx);
+        }
         if near || popup_open || self.data.settings.fullscreen_controls == FullscreenControls::Always {
             self.bars_shown_at = Instant::now();
         }
@@ -132,6 +135,9 @@ impl App {
                 });
         }
 
+        if chrome && bars_visible && self.chapter_strip {
+            self.chapter_strip_ui(ctx, screen.bottom() - BOTTOM_H);
+        }
         self.draw_resume_prompt(ctx, overlay && !bars_visible);
         self.draw_osd(ctx);
         self.draw_drop_overlay(ctx);
@@ -282,7 +288,7 @@ impl App {
             ui.close();
             self.open_clipboard();
         }
-        ui.menu_button(tf!("{}   Zuletzt geöffnet", ph::CLOCK_COUNTER_CLOCKWISE), |ui| {
+        widgets::submenu(ui, &t, &tf!("{}   Zuletzt geöffnet", ph::CLOCK_COUNTER_CLOCKWISE), |ui| {
             let mut hist = self.data.history.clone();
             hist.sort_by(|a, b| b.last_played.cmp(&a.last_played));
             if hist.is_empty() {
@@ -297,18 +303,19 @@ impl App {
             }
         });
         widgets::separator(ui, &t);
-        if widgets::menu_item(ui, &t, ph::SUBTITLES, t!("Untertitel hinzufügen…"), "", false).clicked() {
+        let (audio, live, url) = self.media_kind();
+        if !audio && widgets::menu_item(ui, &t, ph::SUBTITLES, t!("Untertitel hinzufügen…"), "", false).clicked() {
             ui.close();
             self.dialog = Some(Dialog::AddSubs);
         }
-        if widgets::menu_item(ui, &t, ph::ARROWS_CLOCKWISE, t!("Konvertieren / Speichern…"), "", false).clicked() {
+        if !live && widgets::menu_item(ui, &t, ph::ARROWS_CLOCKWISE, t!("Konvertieren / Speichern…"), "", false).clicked() {
             ui.close();
             self.dlg.convert_in = self.current_path();
             self.dlg.convert_result = None;
             self.dialog = Some(Dialog::Convert);
         }
         let rec = self.player.as_ref().map(|p| !p.st.recording.is_empty()).unwrap_or(false);
-        if widgets::menu_item(ui, &t, ph::RECORD, if rec { t!("Aufnahme stoppen") } else { t!("Stream aufnehmen") }, "", rec).clicked() {
+        if (url || rec) && widgets::menu_item(ui, &t, ph::RECORD, if rec { t!("Aufnahme stoppen") } else { t!("Stream aufnehmen") }, "", rec).clicked() {
             ui.close();
             self.toggle_record();
         }
@@ -378,9 +385,33 @@ impl App {
         }
     }
 
+    /// What plays: (audio without a picture, live stream, URL).
+    pub(crate) fn media_kind(&self) -> (bool, bool, bool) {
+        match &self.player {
+            Some(p) if p.st.has_media() => (p.st.is_audio_only(), p.st.is_live(), media::is_url(&p.st.path)),
+            _ => (false, false, false),
+        }
+    }
+
+    /// Whether a bar button fits what plays: no picture tools for audio,
+    /// no file tools for live streams, recording only for streams.
+    pub(crate) fn control_applies(&self, item: ControlItem) -> bool {
+        let (audio, live, url) = self.media_kind();
+        let playing = self.player.as_ref().is_some_and(|p| p.st.has_media());
+        match item {
+            ControlItem::Subtitles | ControlItem::Screenshot | ControlItem::Pip | ControlItem::FrameStep => !audio,
+            ControlItem::Loop | ControlItem::Shuffle | ControlItem::Speed | ControlItem::Bookmark => !live,
+            ControlItem::Record => !playing || url,
+            ControlItem::Chapters => self.player.as_ref().is_some_and(|p| !p.st.chapters.is_empty()),
+            _ => true,
+        }
+    }
+
     fn bottom_bar(&mut self, ui: &mut Ui) {
         let rect = ui.max_rect();
-        let layout = self.data.settings.layout.clone();
+        let mut layout = self.data.settings.layout.clone();
+        layout.left.retain(|i| self.control_applies(*i));
+        layout.right.retain(|i| self.control_applies(*i));
         let spacing = 4.0;
         ui.scope_builder(egui::UiBuilder::new().max_rect(rect), |ui| {
             ui.with_layout(Layout::left_to_right(Align::Center), |ui| {
@@ -500,6 +531,12 @@ impl App {
             ControlItem::Adjustments => {
                 if icon_button(ui, &t, ph::SLIDERS_HORIZONTAL, t!("Anpassungen & Effekte"), self.right == RightPanel::Adjust).clicked() {
                     self.right = if self.right == RightPanel::Adjust { RightPanel::None } else { RightPanel::Adjust };
+                }
+            }
+            ControlItem::Chapters => {
+                if icon_button(ui, &t, ph::LIST_NUMBERS, t!("Kapitel"), self.chapter_strip).clicked() {
+                    self.chapter_strip = !self.chapter_strip;
+                    self.chapter_strip_scrolled = None;
                 }
             }
             ControlItem::Queue => {
@@ -826,9 +863,27 @@ impl App {
             painter.line_segment([pos2(hp.x, track.top()), pos2(hp.x, track.bottom())], Stroke::new(1.0, t.text.gamma_multiply(0.6)));
             ui.ctx().set_cursor_icon(CursorIcon::PointingHand);
             let chapter = self.ext_segment_at(&st.path, ht).or_else(|| st.chapters.iter().rev().find(|c| c.time <= ht).map(|c| c.title.clone()).filter(|s| !s.is_empty()));
-            let want_thumb = self.data.settings.show_seek_thumbnails && st.has_video() && !media::is_url(&st.path) && self.tools.available();
+            let want_thumb = self.data.settings.show_seek_thumbnails && st.has_video() && !media::is_url(&st.path) && self.tools.frames();
             let mut tex = None;
-            if want_thumb {
+            let plex_bif = self.data.settings.show_seek_thumbnails && st.has_video() && crate::plex::bif::has(&st.path);
+            if plex_bif {
+                // Plex's own previews (BIF): no need to decode the stream
+                if let Some((i, jpg)) = crate::plex::bif::frame(ui.ctx(), &st.path, ht) {
+                    let key = format!("{}@bif{}", st.path, i);
+                    if self.seek_thumb.as_ref().map(|(k, _)| k.as_str()) != Some(key.as_str()) {
+                        let rgba = image::load_from_memory(&jpg).ok().and_then(|img| media::fit_rgba(&img, media::SEEK_W, media::SEEK_H));
+                        if let Some(rgba) = rgba {
+                            let img = egui::ColorImage::from_rgba_unmultiplied([media::SEEK_W, media::SEEK_H], &rgba);
+                            self.seek_thumb = Some((key, ui.ctx().load_texture("seek_bif", img, egui::TextureOptions::LINEAR)));
+                        }
+                    }
+                }
+                if let Some((k, tx)) = &self.seek_thumb {
+                    if k.starts_with(&format!("{}@bif", st.path)) {
+                        tex = Some(tx.clone());
+                    }
+                }
+            } else if want_thumb {
                 let step = (dur / 160.0).max(2.0);
                 let bucket = (ht / step).round();
                 let key = format!("{}@{}", st.path, bucket);
@@ -894,8 +949,17 @@ impl App {
         if viz {
             // drawn by the visualizer
         } else if music {
-            let inset = if overlay && bars_visible { BOTTOM_H } else { 0.0 };
-            self.now_playing_page(ui, rect, &st, inset);
+            let phone_bar = crate::mobile::compact(&ctx) && self.mobile_audio_bar();
+            let inset = if phone_bar {
+                self.mobile_audio_bar_h() + self.safe_insets[3]
+            } else if overlay && bars_visible {
+                BOTTOM_H
+            } else {
+                0.0
+            };
+            // On phones the header (back, title, buttons) stays up with music: start below it.
+            let page = if phone_bar { Rect::from_min_max(pos2(rect.left(), rect.top() + self.safe_insets[1] + crate::mobile::m().header_h), rect.max) } else { rect };
+            self.now_playing_page(ui, page, &st, inset);
         } else if let Some(v) = &self.video {
             v.paint(&painter, rect);
         }
@@ -920,12 +984,15 @@ impl App {
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
         }
-        if crate::mobile::touch() {
+        let swallow = self.press_closes_popup;
+        if swallow {
+            // the click only closed a menu
+        } else if crate::mobile::touch() {
             self.touch_video_input(&resp, rect);
         } else if resp.clicked() && self.data.settings.click_to_pause {
             p.toggle_pause();
         }
-        if resp.double_clicked() && self.data.settings.double_click_fullscreen && !crate::mobile::touch() {
+        if !swallow && resp.double_clicked() && self.data.settings.double_click_fullscreen && !crate::mobile::touch() {
             if self.pip.is_some() {
                 self.toggle_pip(&ctx);
             } else {
@@ -1036,7 +1103,8 @@ impl App {
             ui.close();
         }
         widgets::separator(ui, &t);
-        ui.menu_button(format!("{}   Audio", ph::WAVEFORM), |ui| {
+        let (audio, live, _) = self.media_kind();
+        widgets::submenu(ui, &t, &format!("{}   Audio", ph::WAVEFORM), |ui| {
             for tr in st.tracks_of("audio") {
                 if widgets::check_row(ui, &t, &tr.label(), tr.selected).clicked() {
                     p.set_track("audio", Some(tr.id));
@@ -1050,7 +1118,8 @@ impl App {
                 }
             }
         });
-        ui.menu_button(tf!("{}   Untertitel", ph::SUBTITLES), |ui| {
+        if !audio {
+        widgets::submenu(ui, &t, &tf!("{}   Untertitel", ph::SUBTITLES), |ui| {
             if widgets::check_row(ui, &t, t!("Keine"), st.selected("sub").is_none()).clicked() {
                 p.set_track("sub", None);
             }
@@ -1065,7 +1134,7 @@ impl App {
                 self.dialog = Some(Dialog::AddSubs);
             }
         });
-        ui.menu_button(format!("{}   Video", ph::FILM_STRIP), |ui| {
+        widgets::submenu(ui, &t, &format!("{}   Video", ph::FILM_STRIP), |ui| {
             widgets::section_label(ui, &t, t!("Seitenverhältnis"));
             for (label, v) in [(t!("Automatisch"), "no"), ("16:9", "16:9"), ("4:3", "4:3"), ("21:9", "2.33"), ("1:1", "1:1"), ("2.35:1", "2.35")] {
                 if widgets::check_row(ui, &t, label, st.aspect == v || (v == "no" && st.aspect.starts_with('-'))).clicked() {
@@ -1081,15 +1150,18 @@ impl App {
                 ui.close();
             }
         });
-        ui.menu_button(tf!("{}   Geschwindigkeit", ph::SPEEDOMETER), |ui| {
+        }
+        if !live {
+        widgets::submenu(ui, &t, &tf!("{}   Geschwindigkeit", ph::SPEEDOMETER), |ui| {
             for sp in [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0] {
                 if widgets::check_row(ui, &t, &format!("{sp}×"), (st.speed - sp).abs() < 0.01).clicked() {
                     p.set_speed(sp);
                 }
             }
         });
+        }
         widgets::separator(ui, &t);
-        if widgets::menu_item(ui, &t, ph::BOOKMARK_SIMPLE, t!("Lesezeichen hinzufügen"), &self.shortcut(Action::Bookmark), false).clicked() {
+        if !live && widgets::menu_item(ui, &t, ph::BOOKMARK_SIMPLE, t!("Lesezeichen hinzufügen"), &self.shortcut(Action::Bookmark), false).clicked() {
             ui.close();
             self.add_bookmark(None);
         }
@@ -1097,7 +1169,7 @@ impl App {
             ui.close();
             self.right = RightPanel::Adjust;
         }
-        if widgets::menu_item(ui, &t, ph::PICTURE_IN_PICTURE, t!("Bild-in-Bild"), &self.shortcut(Action::Pip), self.pip.is_some()).clicked() {
+        if !audio && widgets::menu_item(ui, &t, ph::PICTURE_IN_PICTURE, t!("Bild-in-Bild"), &self.shortcut(Action::Pip), self.pip.is_some()).clicked() {
             ui.close();
             self.toggle_pip(&ctx);
         }
@@ -1238,7 +1310,10 @@ impl App {
             let mm = crate::mobile::m();
             // Full width in portrait, a compact card in landscape.
             let w = (screen.width() - mm.pad * 2.0).min(400.0);
-            let bottom = if self.view == View::Player && self.has_media() {
+            let bottom = if self.view == View::Player && self.mobile_audio_bar() {
+                // Above the music player bar, not over its buttons.
+                self.mobile_audio_bar_h() + self.safe_insets[3] + 8.0
+            } else if self.view == View::Player && self.has_media() {
                 mm.seek_h + 40.0
             } else {
                 (if crate::mobile::portrait(ctx) { mm.nav_h } else { 0.0 }) + if self.has_media() { mm.mini_h } else { 0.0 } + 12.0
@@ -1267,7 +1342,8 @@ impl App {
             });
         } else {
         let left = screen.left() + if self.lib.compact_open && self.view == View::Player { 352.0 } else { 12.0 };
-        let y = screen.bottom() - if bars_hidden { 20.0 } else { BOTTOM_H } - 62.0;
+        let strip = if !bars_hidden && self.chapter_strip && self.player.as_ref().is_some_and(|p| !p.st.chapters.is_empty()) { CH_H as f32 + 58.0 } else { 0.0 };
+        let y = screen.bottom() - if bars_hidden { 20.0 } else { BOTTOM_H } - strip - 62.0;
         egui::Area::new(Id::new("resume")).order(Order::Foreground).fixed_pos(pos2(left, y)).show(ctx, |ui| {
             widgets::popup_frame(&t).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
                 ui.horizontal(|ui| {
@@ -1401,4 +1477,123 @@ pub struct SnapState {
     pub path: String,
     pub counts: std::collections::HashMap<i64, u32>,
     pub current: Option<i64>,
+}
+
+// ------------------------------------------------------------ chapter strip
+
+/// Pictures for the chapter strip, made one after another in the background.
+pub struct ChapterThumbs {
+    path: String,
+    rx: std::sync::mpsc::Receiver<(usize, Vec<u8>)>,
+    tex: std::collections::HashMap<usize, egui::TextureHandle>,
+}
+
+const CH_W: usize = 192;
+const CH_H: usize = 108;
+
+impl App {
+    fn chapter_thumbs(&mut self, ctx: &egui::Context, path: &str, times: &[f64]) {
+        if self.chapter_thumbs.as_ref().is_some_and(|c| c.path == path) {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel();
+        let can = !media::is_url(path) || crate::plex::is_remote(path);
+        if can && self.tools.frames() {
+            let ff = self.tools.ffmpeg.clone();
+            let (src, times, c) = (crate::plex::authorized(path), times.to_vec(), ctx.clone());
+            std::thread::spawn(move || {
+                for (i, t) in times.into_iter().enumerate() {
+                    // a little into the chapter: its first frame is often black
+                    if let Some(rgba) = media::any_frame(ff.as_deref(), &src, t + 3.0, CH_W, CH_H, true) {
+                        if tx.send((i, rgba)).is_err() {
+                            return;
+                        }
+                        c.request_repaint();
+                    }
+                }
+            });
+        }
+        self.chapter_strip_scrolled = None;
+        self.chapter_thumbs = Some(ChapterThumbs { path: path.to_string(), rx, tex: Default::default() });
+    }
+
+    /// Chapters side by side above the player bar, with a picture each.
+    fn chapter_strip_ui(&mut self, ctx: &egui::Context, bottom: f32) {
+        let Some(p) = &self.player else { return };
+        let st = p.st.clone();
+        if st.chapters.is_empty() {
+            return;
+        }
+        let ctl = p.ctl.clone();
+        let times: Vec<f64> = st.chapters.iter().map(|c| c.time).collect();
+        self.chapter_thumbs(ctx, &st.path, &times);
+        if let Some(c) = self.chapter_thumbs.as_mut() {
+            while let Ok((i, rgba)) = c.rx.try_recv() {
+                let img = egui::ColorImage::from_rgba_unmultiplied([CH_W, CH_H], &rgba);
+                c.tex.insert(i, ctx.load_texture(format!("chapter{i}"), img, egui::TextureOptions::LINEAR));
+            }
+        }
+        let t = self.t;
+        let screen = ctx.screen_rect();
+        let (cw, ch) = (CH_W as f32, CH_H as f32);
+        let h = ch + 58.0;
+        let top = bottom - h;
+        let mut seek = None;
+        let mut close = false;
+        let mut scrolled = self.chapter_strip_scrolled;
+        let texs: Vec<Option<egui::TextureId>> = (0..st.chapters.len()).map(|i| self.chapter_thumbs.as_ref().and_then(|c| c.tex.get(&i)).map(|x| x.id())).collect();
+        egui::Area::new(Id::new("chapter_strip")).order(Order::Foreground).fixed_pos(pos2(screen.left(), top)).show(ctx, |ui| {
+            egui::Frame::new().fill(t.panel.gamma_multiply(0.94)).inner_margin(egui::Margin::symmetric(12, 8)).show(ui, |ui| {
+                ui.set_min_size(vec2(screen.width() - 24.0, h - 16.0));
+                ui.set_max_width(screen.width() - 24.0);
+                ui.horizontal(|ui| {
+                    egui::ScrollArea::horizontal().id_salt("chapter_scroll").max_width(screen.width() - 70.0).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 10.0;
+                            for (i, c) in st.chapters.iter().enumerate() {
+                                let cur = st.chapter == i as i64;
+                                let (r, resp) = ui.allocate_exact_size(vec2(cw, ch + 40.0), Sense::click());
+                                let img = Rect::from_min_size(r.min, vec2(cw, ch));
+                                ui.painter().rect_filled(img, CornerRadius::same(theme::R), t.surface);
+                                match texs[i] {
+                                    Some(id) => {
+                                        egui::Image::new((id, img.size())).corner_radius(CornerRadius::same(theme::R)).paint_at(ui, img);
+                                    }
+                                    None => {
+                                        ui.painter().text(img.center(), Align2::CENTER_CENTER, ph::FILM_STRIP, theme::icon(22.0), t.text_faint);
+                                    }
+                                }
+                                if cur || resp.hovered() {
+                                    ui.painter().rect_stroke(img, CornerRadius::same(theme::R), Stroke::new(2.0, if cur { t.accent } else { t.text_dim }), StrokeKind::Inside);
+                                }
+                                let title = if c.title.is_empty() { tf!("Kapitel {}", i + 1) } else { c.title.clone() };
+                                widgets::painter_text_trunc(ui.painter(), pos2(r.left() + 2.0, img.bottom() + 5.0), &title, FontId::proportional(12.5), if cur { t.accent } else { t.text }, cw - 4.0);
+                                widgets::painter_text_trunc(ui.painter(), pos2(r.left() + 2.0, img.bottom() + 22.0), &media::fmt_time(c.time), FontId::proportional(11.0), t.text_faint, cw - 4.0);
+                                if resp.on_hover_cursor(CursorIcon::PointingHand).clicked() {
+                                    seek = Some(c.time);
+                                }
+                                if cur && scrolled != Some(i) {
+                                    ui.scroll_to_rect(r, Some(Align::Center));
+                                    scrolled = Some(i);
+                                }
+                            }
+                        });
+                    });
+                    ui.add_space((ui.available_width() - 34.0).max(0.0));
+                    if icon_button(ui, &t, ph::X, t!("Schließen"), false).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        });
+        self.chapter_strip_scrolled = scrolled;
+        if let Some(tm) = seek {
+            ctl.seek_abs(tm, true);
+            // a chosen chapter plays
+            ctl.set_pause(false);
+        }
+        if close {
+            self.chapter_strip = false;
+        }
+    }
 }

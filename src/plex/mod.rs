@@ -2,6 +2,7 @@
 //! and play-state reporting. The UI lives in `ui_plex.rs`.
 
 pub mod api;
+pub mod bif;
 pub mod images;
 pub mod mb;
 pub mod model;

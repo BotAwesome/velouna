@@ -401,8 +401,42 @@ impl App {
     // ------------------------------------------------------------ player
 
     pub fn touch_bars_visible(&self) -> bool {
+        // Music keeps its player bar: nothing to see behind it, and a song
+        // should not need a tap before it can be paused or skipped.
+        if self.mobile_audio_bar() {
+            return true;
+        }
         let paused = self.player.as_ref().is_none_or(|p| p.st.paused);
         self.touch_bars && (paused || self.bars_shown_at.elapsed() < Duration::from_millis(m().hide_after_ms as u64) || egui_popup_open(self))
+    }
+
+    /// The chosen phone buttons that fit what plays: no picture tools for
+    /// audio, nothing to seek, repeat or speed up for live streams.
+    pub fn touch_items(&self) -> crate::config::TouchControls {
+        use crate::config::TouchItem as I;
+        let (audio, live, _) = self.media_kind();
+        let fits = |i: &I| match i {
+            I::Subtitles | I::Tracks | I::Scale | I::Rotate => !audio,
+            I::Repeat | I::Shuffle | I::Speed | I::Bookmark | I::SeekBack | I::SeekForward => !live,
+            _ => true,
+        };
+        let mut tc = self.data.settings.touch_controls.clone();
+        tc.left.retain(fits);
+        tc.right.retain(fits);
+        tc
+    }
+
+    /// Audio without a picture plays with a fixed player bar at the bottom.
+    pub fn mobile_audio_bar(&self) -> bool {
+        !self.mob.locked && self.player.as_ref().is_some_and(|p| p.st.is_audio_only())
+    }
+
+    /// Height of that bar above the safe area: buttons, seek row, controls.
+    pub fn mobile_audio_bar_h(&self) -> f32 {
+        let mm = m();
+        let tc = self.touch_items();
+        let buttons = if tc.left.is_empty() && tc.right.is_empty() { 10.0 } else { mm.icon_btn + 8.0 };
+        buttons + mm.seek_h + 10.0 + mm.play_btn + 18.0
     }
 
     fn mobile_player(&mut self, ui: &mut Ui) {
@@ -451,10 +485,13 @@ impl App {
             }
             return;
         }
-        if self.data.settings.touch_gestures {
+        // The now-playing page of music has nothing to swipe or double-tap on,
+        // and a live stream nothing to seek in.
+        let (audio, live, _) = self.media_kind();
+        if self.data.settings.touch_gestures && !audio {
             self.swipe_gestures(resp, rect);
         }
-        if resp.double_clicked() {
+        if resp.double_clicked() && !audio && !live {
             if let (Some(pos), Some(p)) = (resp.interact_pointer_pos(), &self.player) {
                 let f = (pos.x - rect.left()) / rect.width();
                 if f < mm.seek_zone {
@@ -724,17 +761,25 @@ impl App {
         }
         // Bottom geometry: button row at the bottom (if any buttons are
         // chosen), the seek row above it.
-        let tc = &self.data.settings.touch_controls;
+        let tc = self.touch_items();
         let n = (tc.left.len() + tc.right.len()) as f32;
         let bb = mm.icon_btn.min((rect.width() - 16.0) / (n + 1.0));
         let btn_row = Rect::from_min_max(pos2(rect.left() + 8.0, rect.bottom() - 4.0 - bb), pos2(rect.right() - 8.0, rect.bottom() - 4.0));
         let seek_bottom = if n > 0.0 { btn_row.top() + 4.0 } else { rect.bottom() - 10.0 };
         let seek_row = Rect::from_min_max(pos2(rect.left() + 14.0, seek_bottom - mm.seek_h), pos2(rect.right() - 14.0, seek_bottom));
         let top = Rect::from_min_max(full.min, pos2(full.right(), rect.top() + mm.header_h + 30.0));
-        let bottom = Rect::from_min_max(pos2(full.left(), seek_row.top() - 50.0), full.max);
-        p.add(egui::Shape::mesh(shade(top, true)));
-        p.add(egui::Shape::mesh(shade(bottom, false)));
-        p.rect_filled(full, CornerRadius::ZERO, Color32::from_black_alpha(60));
+        let audio = self.mobile_audio_bar();
+        if audio {
+            // A solid bar instead of shading over the now-playing page.
+            let bar = Rect::from_min_max(pos2(full.left(), rect.bottom() - self.mobile_audio_bar_h()), full.max);
+            p.rect_filled(bar, CornerRadius::ZERO, t.panel);
+            p.hline(bar.x_range(), bar.top(), Stroke::new(1.0, t.border));
+        } else {
+            let bottom = Rect::from_min_max(pos2(full.left(), seek_row.top() - 50.0), full.max);
+            p.add(egui::Shape::mesh(shade(top, true)));
+            p.add(egui::Shape::mesh(shade(bottom, false)));
+            p.rect_filled(full, CornerRadius::ZERO, Color32::from_black_alpha(60));
+        }
         let mut touched = false;
 
         // Top: back, title, panels
@@ -772,8 +817,8 @@ impl App {
         }
         widgets::painter_text_trunc(&p, pos2(back.right() + 6.0, back.center().y - 10.0), &st.media_title, theme::semibold(16.0), Color32::WHITE, moon.left() - back.right() - 14.0);
 
-        // Center: previous, play/pause, next
-        let c = rect.center();
+        // Center: previous, play/pause, next. For music in the bar, above the seek row.
+        let c = if audio { pos2(rect.center().x, seek_row.top() - 8.0 - mm.play_btn / 2.0) } else { rect.center() };
         let pb = Rect::from_center_size(c, vec2(mm.play_btn, mm.play_btn));
         let gap = mm.play_btn * 0.5 + mm.ctl_btn * 0.5 + 26.0;
         let prev = Rect::from_center_size(c - vec2(gap, 0.0), vec2(mm.ctl_btn, mm.ctl_btn));
@@ -799,7 +844,7 @@ impl App {
 
         // Bottom, two rows: time · seek bar · duration, and below it the
         // buttons chosen in the settings, in the left and right corner.
-        let tc = self.data.settings.touch_controls.clone();
+        let tc = self.touch_items();
         let mut x = btn_row.left();
         for item in &tc.left {
             let r = Rect::from_min_size(pos2(x, btn_row.top()), vec2(bb, bb));
@@ -987,6 +1032,8 @@ impl App {
                             if widgets::menu_item(ui, &t, "", &name, &crate::media::fmt_time(c.time), cur == Some(i)).clicked() {
                                 if let Some(pl) = &self.player {
                                     pl.seek_abs(c.time, true);
+                                    // a chosen chapter plays
+                                    pl.set_pause(false);
                                 }
                                 ui.close();
                             }

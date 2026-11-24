@@ -54,6 +54,26 @@ raw-window-handle = "0.6"
 [target.'cfg(windows)'.dependencies]
 keyring = { version = "3", features = ["windows-native"] }
 rfd = "0.15"
+# Media keys and the Windows media overlay (SMTC), taskbar buttons and jump
+# list, thumbnails and tags from the shell. Already in the tree via other
+# crates, so no new download.
+windows = { version = "0.61", features = [
+    "Foundation",
+    "Media",
+    "Storage",
+    "Storage_Streams",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_Variant",
+    "Win32_System_WinRT",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_Shell_PropertiesSystem",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Storage_EnhancedStorage",
+] }
 
 # Linux desktop: Wayland and X11 windows, Wayland clipboard, the Secret
 # Service (GNOME Keyring / KWallet) for the Plex sign-in, file dialogs via

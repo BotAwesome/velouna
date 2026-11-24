@@ -130,11 +130,6 @@ fn crop_uv(w: f32, h: f32, aspect: f32) -> Rect {
     }
 }
 
-/// Up to two capitals for a placeholder cover.
-fn initials(s: &str) -> String {
-    s.split_whitespace().filter_map(|w| w.chars().find(|c| c.is_alphanumeric())).take(2).flat_map(|c| c.to_uppercase()).collect()
-}
-
 /// A calm colour of its own for every name.
 fn name_color(s: &str) -> Color32 {
     let mut h = std::collections::hash_map::DefaultHasher::new();
@@ -148,12 +143,11 @@ fn image(p: &egui::Painter, r: Rect, id: TextureId, uv: Rect, radius: u8, tint: 
 }
 
 /// Placeholder cover: initials on a colour of their own.
-fn placeholder(p: &egui::Painter, r: Rect, name: &str, radius: u8) {
-    p.rect_filled(r, CornerRadius::same(radius), name_color(name));
-    let txt = initials(name);
-    if !txt.is_empty() {
-        p.text(r.center(), Align2::CENTER_CENTER, txt, theme::semibold(r.height() * 0.36), Color32::from_white_alpha(170));
-    }
+fn placeholder(p: &egui::Painter, r: Rect, radius: u8) {
+    let [tr, tg, tb, _] = crate::logo::LOGO_TILE;
+    let [dr, dg, db, _] = crate::logo::LOGO_DRAPE;
+    p.rect_filled(r, CornerRadius::same(radius), Color32::from_rgb(tr, tg, tb));
+    widgets::draw_logo(p, Rect::from_center_size(r.center(), r.size() * 0.5), Color32::from_rgb(dr, dg, db));
 }
 
 /// Paints one row (no interaction). `right_w` stays free for the caller.
@@ -185,7 +179,7 @@ pub fn paint_row(p: &egui::Painter, t: &Theme, rect: Rect, info: &RowInfo, look:
             Pic::Pending => {
                 p.rect_filled(r, CornerRadius::same(4), t.elevated);
             }
-            Pic::None if info.audio => placeholder(p, r, if info.sub.is_empty() { &info.title } else { &info.sub }, 4),
+            Pic::None if info.audio => placeholder(p, r, 4),
             Pic::None => {
                 p.rect_filled(r, CornerRadius::same(4), t.elevated);
                 p.text(r.center(), Align2::CENTER_CENTER, ph::FILM_STRIP, theme::icon(14.0), t.text_faint);
@@ -402,18 +396,20 @@ impl App {
         }
         let probe = self.tools.request_probe(f).cloned();
         let audio = probe.as_ref().map(|p| !p.has_video).unwrap_or_else(|| media::is_audio(f));
+        // without ffprobe (Android) songs read their cover straight from the file
+        let direct = probe.is_none() && self.tools.ffprobe.is_none() && media::is_audio(f);
         let pic = match &probe {
             _ if !want_pic => Pic::None,
-            None => Pic::Pending,
-            Some(p) if p.has_video || p.has_cover => match self.thumb_for(ctx, f) {
+            None if !direct => Pic::Pending,
+            _ if direct || probe.as_ref().is_some_and(|p| p.has_video || p.has_cover) => match self.thumb_for(ctx, f) {
                 // Thumbnails are 16:9 with the cover padded in the middle.
                 Some(id) if audio => Pic::Image(id, crop_uv(media::THUMB_W as f32, media::THUMB_H as f32, 1.0)),
                 Some(id) => Pic::Image(id, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0))),
                 None if matches!(self.thumb_keys.get(f).and_then(|k| self.thumbs.get(k)), Some(ThumbState::Failed)) => Pic::None,
-                None if !self.tools.available() => Pic::None,
+                None if !self.tools.frames() && !audio => Pic::None,
                 None => Pic::Pending,
             },
-            Some(_) => Pic::None,
+            _ => Pic::None,
         };
         let (title, sub, track, dur) = match &probe {
             Some(p) if audio => (
@@ -581,7 +577,7 @@ impl App {
             let muted = Color32::from_rgb(mix(base.accent.r()), mix(base.accent.g()), mix(base.accent.b()));
             widgets::draw_logo(&painter, Rect::from_center_size(cover.center(), cover.size() * 0.5), muted);
         } else {
-            placeholder(&painter, cover, artist.as_deref().unwrap_or(&title), r as u8);
+            placeholder(&painter, cover, r as u8);
         }
         if can_list && ui.interact(cover, Id::new("np_cover"), Sense::click()).on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
             self.np_info = !self.np_info;
@@ -771,19 +767,18 @@ impl App {
             self.np_art = Some(NpArt { path: st.path.clone(), asked: false, rx: None, cover: None, backdrop: None, accent: None, old, since: now });
         }
         let ffmpeg = self.tools.ffmpeg.clone();
-        let probed = self.tools.probe_cache.get(&st.path).is_some_and(|p| p.has_cover);
+        let probed = self.tools.probe_cache.get(&st.path).is_some_and(|p| p.has_cover)
+            || (self.tools.ffprobe.is_none() && media::is_audio(&st.path));
         let Some(a) = self.np_art.as_mut() else { return };
         if !a.asked && (st.has_cover() || probed) && !media::is_url(&st.path) {
             a.asked = true;
-            if let Some(ff) = ffmpeg {
-                let (tx, rx) = channel();
-                let (path, c) = (st.path.clone(), ctx.clone());
-                std::thread::spawn(move || {
-                    let _ = tx.send(media::cover_art(&ff, &path, ART).and_then(analyse));
-                    c.request_repaint();
-                });
-                a.rx = Some(rx);
-            }
+            let (tx, rx) = channel();
+            let (path, c) = (st.path.clone(), ctx.clone());
+            std::thread::spawn(move || {
+                let _ = tx.send(media::cover_art(ffmpeg.as_deref(), &path, ART).and_then(analyse));
+                c.request_repaint();
+            });
+            a.rx = Some(rx);
         }
         let got = match a.rx.as_ref().map(|rx| rx.try_recv()) {
             Some(Ok(px)) => Some(px),
@@ -854,6 +849,5 @@ mod tests {
         // cover padded into a 16:9 thumbnail: the middle square
         let uv = crop_uv(320.0, 180.0, 1.0);
         assert!((uv.min.x - 0.21875).abs() < 1e-4 && (uv.max.x - 0.78125).abs() < 1e-4);
-        assert_eq!(initials("Lumen Drift"), "LD");
     }
 }

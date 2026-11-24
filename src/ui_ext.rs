@@ -1338,7 +1338,12 @@ impl App {
         }
         let title = if s(&v, "title").is_empty() { s(&item, "title").to_string() } else { s(&v, "title").to_string() };
         let headers: Vec<String> = v.get("headers").and_then(|x| x.as_object()).map(|h| h.iter().filter_map(|(k, x)| x.as_str().map(|x| format!("{k}: {x}"))).collect()).unwrap_or_default();
-        let start = v.get("start").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        // "Continue" passes the saved position along with the item
+        let resume = item.get("_start").and_then(|x| x.as_f64()).unwrap_or(0.0);
+        if let Some(o) = item.as_object_mut() {
+            o.remove("_start");
+        }
+        let start = v.get("start").and_then(|x| x.as_f64()).filter(|x| *x > 0.0).unwrap_or(resume);
         let kind = s(&item, "kind").to_string();
         self.ext_ui.items.insert(url.clone(), (plugin.to_string(), item));
         self.ext_load(&url, mode, &title, start, &headers.join(","));

@@ -528,7 +528,9 @@ impl App {
             let mut opts = format!("force-media-title={},http-header-fields={}", q(&it.play_title()), q(&headers));
             if n == 0 && req.mode == PlayMode::Play {
                 let offset = it.view_offset();
-                let resumable = offset > 30.0 && it.progress().map(|p| p < 0.95).unwrap_or(false);
+                // Songs always start from the beginning.
+                let long = it.duration_ms as f64 / 1000.0 >= crate::config::LONG_AUDIO;
+                let resumable = (it.kind != plex::model::Kind::Track || long) && offset > 30.0 && it.progress().map(|p| p < 0.95).unwrap_or(false);
                 let at = match req.start_at {
                     Some(t) => t,
                     None if resumable => match self.data.settings.resume {

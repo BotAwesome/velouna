@@ -51,6 +51,7 @@ fn item_icon(i: ControlItem) -> &'static str {
         ControlItem::Bookmark => ph::BOOKMARK_SIMPLE,
         ControlItem::FrameStep => ph::CARET_LINE_RIGHT,
         ControlItem::Record => ph::RECORD,
+        ControlItem::Chapters => ph::LIST_NUMBERS,
     }
 }
 
@@ -1954,13 +1955,16 @@ impl App {
                     ui.label(RichText::new(t!("Willkommen bei Velouna")).font(theme::semibold(22.0)));
                     ui.label(RichText::new(t!("Wähle dein bevorzugtes Design und deine Farbe.")).color(t.text_dim));
                     ui.add_space(16.0);
+                    // Tiles and dots shrink on narrow phones instead of widening the dialog.
+                    let gap = 24.0_f32.min(ui.available_width() * 0.05);
+                    let tile = ((ui.available_width() - 2.0 * gap) / 3.0).min(96.0);
                     ui.horizontal(|ui| {
-                        let total = 3.0 * 96.0 + 2.0 * 24.0;
-                        ui.add_space((ui.available_width() - total) / 2.0);
-                        ui.spacing_mut().item_spacing.x = 24.0;
+                        let total = 3.0 * tile + 2.0 * gap;
+                        ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
+                        ui.spacing_mut().item_spacing.x = gap;
                         for (mode, label) in [(ThemeMode::Light, t!("Hell")), (ThemeMode::Dark, t!("Dunkel")), (ThemeMode::System, "System")] {
                             ui.vertical(|ui| {
-                                let (r, resp) = ui.allocate_exact_size(vec2(96.0, 72.0), Sense::click());
+                                let (r, resp) = ui.allocate_exact_size(vec2(tile, tile * 0.75), Sense::click());
                                 let sel = self.data.settings.theme == mode;
                                 match mode {
                                     ThemeMode::Light => {
@@ -1987,11 +1991,12 @@ impl App {
                     });
                     ui.add_space(16.0);
                     ui.horizontal(|ui| {
-                        let total = ACCENTS.len() as f32 * 34.0;
-                        ui.add_space((ui.available_width() - total) / 2.0);
+                        let dot = (ui.available_width() / ACCENTS.len() as f32 - 4.0).min(30.0);
+                        let total = ACCENTS.len() as f32 * (dot + 4.0);
+                        ui.add_space(((ui.available_width() - total) / 2.0).max(0.0));
                         ui.spacing_mut().item_spacing.x = 4.0;
                         for a in ACCENTS {
-                            if widgets::color_swatch(ui, &t, Color32::from_rgb(a[0], a[1], a[2]), self.data.settings.accent == a, 30.0).clicked() {
+                            if widgets::color_swatch(ui, &t, Color32::from_rgb(a[0], a[1], a[2]), self.data.settings.accent == a, dot).clicked() {
                                 self.data.settings.accent = a;
                                 self.theme_dirty = true;
                             }
@@ -1999,7 +2004,8 @@ impl App {
                     });
                     ui.add_space(14.0);
                     // live preview bar
-                    let (r, _) = ui.allocate_exact_size(vec2(520.0, 36.0), Sense::hover());
+                    // Narrower on phones, so the dialog does not grow past the screen.
+                    let (r, _) = ui.allocate_exact_size(vec2(ui.available_width().min(520.0), 36.0), Sense::hover());
                     ui.painter().rect_filled(r, CornerRadius::same(6), t.panel);
                     let pb = Rect::from_min_size(pos2(r.left() + 40.0, r.top() + 6.0), vec2(38.0, 24.0));
                     ui.painter().rect_filled(pb, CornerRadius::same(4), t.accent);
@@ -2081,10 +2087,13 @@ impl App {
                     }
                 });
                 ui.add_space(12.0);
-                egui::Grid::new("ob_nav").num_columns(2).spacing([28.0, 6.0]).show(ui, |ui| {
+                // Two columns where they fit, one on phones.
+                let two = ui.available_width() >= 2.0 * 250.0 + 28.0;
+                let cell = if two { 250.0 } else { ui.available_width() };
+                egui::Grid::new("ob_nav").num_columns(if two { 2 } else { 1 }).spacing([28.0, 6.0]).show(ui, |ui| {
                     for (i, (id, label, icon)) in items.iter().enumerate() {
                         ui.horizontal(|ui| {
-                            ui.set_min_width(250.0);
+                            ui.set_min_width(cell);
                             let mut on = self.data.settings.nav_shown(id);
                             ui.label(RichText::new(*icon).font(theme::icon(17.0)).color(if on { t.accent } else { t.text_faint }));
                             ui.label(RichText::new(crate::i18n::tr(label)).color(if on { t.text } else { t.text_dim }));
@@ -2096,7 +2105,7 @@ impl App {
                                 self.mark_dirty();
                             }
                         });
-                        if i % 2 == 1 {
+                        if !two || i % 2 == 1 {
                             ui.end_row();
                         }
                     }

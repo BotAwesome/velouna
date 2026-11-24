@@ -3988,6 +3988,7 @@ dependencies = [
  "ureq",
  "velouna-i18n-macros",
  "velouna-rfd-shim",
+ "windows",
  "winit",
  "winresource",
  "zbus 5.19.0",

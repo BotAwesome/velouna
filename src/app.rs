@@ -216,6 +216,18 @@ pub struct App {
     /// Chapter snapping on the seek bar (counts per chapter, current file).
     pub seek_snap: crate::ui_player::SnapState,
     pub seek_thumb: Option<(String, TextureHandle)>,
+    /// The current press started while a menu was open: it only closes the
+    /// menu and does nothing on the video.
+    pub press_closes_popup: bool,
+    /// Windows: when the overlay picture and the jump list were last looked at.
+    #[cfg(windows)]
+    pub win_tick: Instant,
+    #[cfg(windows)]
+    pub jump_list_key: u64,
+    /// The chapter strip above the player bar, and its pictures.
+    pub chapter_strip: bool,
+    pub chapter_strip_scrolled: Option<usize>,
+    pub chapter_thumbs: Option<crate::ui_player::ChapterThumbs>,
     pub seek_thumb_req: Option<String>,
     pub thumbs: HashMap<String, ThumbState>,
     pub thumb_keys: HashMap<String, String>,
@@ -398,7 +410,25 @@ impl App {
         let (player, video, mpv_error) = match init_mpv(&data.settings) {
             Ok(mpv) => {
                 let c2 = ctx.clone();
-                mpv.set_wakeup_callback(Box::new(move || c2.request_repaint()));
+                // Minimized: mpv's events only need handling now and then.
+                mpv.set_wakeup_callback(Box::new(move || {
+                    if crate::platform::BACKGROUND.load(std::sync::atomic::Ordering::Relaxed) {
+                        c2.request_repaint_after(std::time::Duration::from_millis(500));
+                    } else {
+                        c2.request_repaint();
+                    }
+                }));
+                // Media keys and the Windows media overlay.
+                #[cfg(windows)]
+                {
+                    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+                    if let Ok(h) = cc.window_handle() {
+                        if let RawWindowHandle::Win32(w) = h.as_raw() {
+                            crate::platform::win::set_window(w.hwnd.get());
+                        }
+                    }
+                    crate::platform::win::media_init(mpv.clone());
+                }
                 let video = VideoRenderer::new(mpv.clone(), ctx.clone());
                 // Notification / lock screen controls.
                 #[cfg(target_os = "android")]
@@ -447,6 +477,14 @@ impl App {
             seek_drag: None,
             seek_snap: Default::default(),
             seek_thumb: None,
+            press_closes_popup: false,
+            #[cfg(windows)]
+            win_tick: Instant::now(),
+            #[cfg(windows)]
+            jump_list_key: 0,
+            chapter_strip: false,
+            chapter_strip_scrolled: None,
+            chapter_thumbs: None,
             seek_thumb_req: None,
             thumbs: HashMap::new(),
             thumb_keys: HashMap::new(),
@@ -1532,9 +1570,12 @@ impl App {
             self.plex_file_loaded(&path);
             return;
         }
+        // Songs always start from the beginning; podcasts and audiobooks
+        // (audio from 20 minutes on) resume like videos.
+        let music = media::is_audio(&path) || self.player.as_ref().is_some_and(|pl| pl.st.is_audio_only());
         if self.data.settings.remember_positions {
             if let Some(h) = self.data.history_for(&path) {
-                if h.resumable() {
+                if h.resumable() && !(music && h.duration < config::LONG_AUDIO) {
                     match self.data.settings.resume {
                         config::ResumeMode::Ask => {
                             self.resume_prompt = Some(ResumePrompt { path: path.clone(), pos: h.position, until: Instant::now() + Duration::from_secs(10) })
@@ -1580,8 +1621,16 @@ impl App {
         let logo = self.stream_logos.get(path).cloned();
         let audio_only = radio || media::is_audio(path);
         let now = config::now_secs();
+        let ext = self.ext_ui.items.get(path).map(|(plugin, item)| config::ExtRef { plugin: plugin.clone(), item: item.clone() });
+        if let Some(e) = &ext {
+            // the same plugin item under an older (expired) address
+            self.data.history.retain(|h| h.path == path || !h.ext.as_ref().is_some_and(|o| o.same(e)));
+        }
         if let Some(h) = self.data.history.iter_mut().find(|h| h.path == path) {
             h.last_played = now;
+            if ext.is_some() {
+                h.ext = ext.clone();
+            }
             if !title.is_empty() {
                 h.title = title;
             }
@@ -1617,6 +1666,7 @@ impl App {
                 audio_only,
                 live,
                 logo,
+                ext: ext.clone(),
             });
         }
         let limit = self.data.settings.history_limit.max(10);
@@ -1831,6 +1881,10 @@ impl App {
             };
             crate::platform::keep_awake(awake);
         }
+        let minimized = ctx.input(|i| i.viewport().minimized).unwrap_or(false);
+        crate::platform::BACKGROUND.store(minimized, std::sync::atomic::Ordering::Relaxed);
+        #[cfg(windows)]
+        self.windows_tick();
         #[cfg(target_os = "android")]
         {
             // Keep the screen on while something plays; let it sleep after.
@@ -2139,5 +2193,45 @@ mod missing_tests {
         }
         assert_eq!(super::volume_root(std::path::Path::new("/storage/1234-ABCD/Movies/a.mp4")), Some("/storage/1234-ABCD".into()));
         assert_eq!(super::volume_root(std::path::Path::new("/storage/emulated/0/Movies/a.mp4")), Some("/storage/emulated/0".into()));
+    }
+}
+
+#[cfg(windows)]
+impl App {
+    /// Taskbar buttons and progress every frame; the overlay picture and
+    /// the jump list now and then.
+    fn windows_tick(&mut self) {
+        let playing = self.player.as_ref().filter(|p| p.st.has_media()).map(|p| !p.st.paused);
+        let progress = self.dlg.convert_progress.map(|(d, t)| if t > 0.0 { (d / t) as f32 } else { 0.0 });
+        crate::platform::win::taskbar(playing, progress, [t!("Vorheriger Titel"), t!("Abspielen"), t!("Pause"), t!("Nächster Titel")]);
+        if self.win_tick.elapsed() < Duration::from_millis(1500) {
+            return;
+        }
+        self.win_tick = Instant::now();
+        // Picture for the media overlay: station logo, cover or thumbnail.
+        let path = self.current_path();
+        let art = if path.is_empty() {
+            None
+        } else {
+            self.stream_logos.get(&path).and_then(|url| self.logos.cached_file(url)).map(|p| p.to_string_lossy().to_string()).or_else(|| media::overlay_picture(&path))
+        };
+        crate::platform::win::set_media_art(art);
+        // Jump list: continue and recently played, when they change.
+        let mut hist = self.data.history.clone();
+        hist.sort_by(|a, b| b.last_played.cmp(&a.last_played));
+        let local = |h: &&HistoryEntry| !media::is_url(&h.path) && std::path::Path::new(&h.path).exists();
+        let cont: Vec<(String, String)> = hist.iter().filter(local).filter(|h| h.resumable() && !h.is_song()).take(4).map(|h| (h.path.clone(), h.title.clone())).collect();
+        let recent: Vec<(String, String)> = hist.iter().filter(local).filter(|h| !cont.iter().any(|c| c.0 == h.path)).take(6).map(|h| (h.path.clone(), h.title.clone())).collect();
+        let key = {
+            use std::hash::{Hash, Hasher};
+            let mut k = std::collections::hash_map::DefaultHasher::new();
+            cont.hash(&mut k);
+            recent.hash(&mut k);
+            k.finish()
+        };
+        if key != self.jump_list_key {
+            self.jump_list_key = key;
+            crate::platform::win::jump_list(&[(t!("Weiterschauen").to_string(), cont), (t!("Zuletzt gespielt").to_string(), recent)]);
+        }
     }
 }
