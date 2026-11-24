@@ -303,6 +303,11 @@ impl App {
                         row(t!("Bildrate"), format!("{:.3} fps", st.fps));
                     }
                     row(t!("Videocodec"), st.video_codec.clone());
+                    if st.is_hdr() {
+                        let kind = if st.transfer == "hlg" { "HLG" } else { "HDR10" };
+                        let how = if self.hdr_on { t!("ausgegeben als HDR") } else { t!("umgerechnet in SDR") };
+                        row("HDR", format!("{kind} · {how}"));
+                    }
                     row(t!("Audiocodec"), st.audio_codec.clone());
                     row(t!("Hardware-Dekodierung"), if st.hwdec.is_empty() || st.hwdec == "no" { "aus".into() } else { st.hwdec.clone() });
                     for (k, v) in &st.metadata {

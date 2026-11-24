@@ -860,7 +860,7 @@ impl App {
             }
         }
         // handle
-        let handle = Rect::from_center_size(pos2(px.clamp(track.left() + 3.0, track.right() - 3.0), track.center().y), vec2(6.0, th + 6.0));
+        let handle = Rect::from_center_size(pos2(px.min(track.right() - 3.0).max(track.left() + 3.0), track.center().y), vec2(6.0, th + 6.0));
         painter.rect_filled(handle, CornerRadius::same(3), t.accent);
 
         // hover preview
@@ -908,7 +908,8 @@ impl App {
             let card_w = if tex.is_some() { tw + 8.0 } else { 110.0 };
             let card_h = if tex.is_some() { th_img + 30.0 } else { 26.0 } + if chapter.is_some() { 16.0 } else { 0.0 };
             let screen = ui.ctx().screen_rect();
-            let x = (hp.x - card_w / 2.0).clamp(screen.left() + 4.0, screen.right() - card_w - 4.0);
+            // min/max, not clamp: a minimized window is narrower than the card.
+            let x = (hp.x - card_w / 2.0).min(screen.right() - card_w - 4.0).max(screen.left() + 4.0);
             let y = track.top() - card_h - 12.0;
             egui::Area::new(Id::new("seek_preview")).order(Order::Tooltip).fixed_pos(pos2(x, y)).interactable(false).show(ui.ctx(), |ui| {
                 let r = Rect::from_min_size(pos2(x, y), vec2(card_w, card_h));

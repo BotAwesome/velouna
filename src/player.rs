@@ -452,7 +452,6 @@ impl PlayerState {
     }
 
     /// HDR video (PQ = HDR10/HDR10+/Dolby Vision, HLG).
-    #[allow(dead_code)]
     pub fn is_hdr(&self) -> bool {
         matches!(self.transfer.as_str(), "pq" | "hlg")
     }
