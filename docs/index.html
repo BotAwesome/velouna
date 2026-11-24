@@ -302,6 +302,7 @@ p { margin: 0; }
 .grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r-lg); overflow: hidden; }
 .cell { background: var(--bg-raise); padding: 32px 30px 34px; transition: background .25s; }
 .cell:hover { background: var(--surface); }
+.cell.span2 { grid-column: span 2; }
 .cell .fi { margin-bottom: 20px; width: 38px; height: 38px; border-radius: 11px; }
 .cell h3 { margin-bottom: 8px; }
 .cell p { color: var(--text-2); font-size: 15px; line-height: 1.6; }
@@ -454,6 +455,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
   .facts li:nth-child(3) { border-left: 0; }
   .facts li:nth-child(n+3) { border-top: 1px solid var(--line); }
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cell.span2 { grid-column: auto; }
   .dl-card { grid-template-columns: 1fr; padding: 44px; gap: 36px; }
   .faq-grid { grid-template-columns: 1fr; gap: 28px; }
   .foot { grid-template-columns: 1fr 1fr; }
@@ -629,6 +631,7 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
           <li><b>Resume</b> where you stopped, speed, A-B repeat and a sleep timer that fades out</li>
           <li><b>10-band equalizer</b> and a subtitle style editor</li>
           <li><b>Picture-in-picture</b> and a queue you can reorder</li>
+          <li><b>Real HDR</b> on Windows: with HDR on, HDR videos keep their full brightness</li>
         </ul>
       </div>
       <div class="visual reveal">
@@ -777,6 +780,16 @@ footer { border-top: 1px solid var(--line); background: var(--bg-raise); padding
         <span class="fi"><svg viewBox="0 0 24 24"><path d="M4.5 12.5a10.5 10.5 0 0 1 15 0M8 16a5.5 5.5 0 0 1 8 0"/><circle cx="12" cy="19.2" r=".9" fill="currentColor"/></svg></span>
         <h3>Any stream</h3>
         <p>Open network streams and IPTV playlists by URL or straight from the clipboard, and pin the ones you use.</p>
+      </div>
+      <div class="cell">
+        <span class="fi"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M3 20.5h18M9 10.5l2 2 4-4"/></svg></span>
+        <h3>At home in Windows</h3>
+        <p>Media keys and the volume overlay, play and skip buttons with progress in the taskbar, recent files in the jump list.</p>
+      </div>
+      <div class="cell span2">
+        <span class="fi"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg></span>
+        <h3>Real HDR</h3>
+        <p>When Windows HDR is on, HDR videos play with their full brightness and colour. Switch HDR on or off mid-video and Velouna follows.</p>
       </div>
     </div>
   </div>
