@@ -3,6 +3,27 @@
 All notable changes to Velouna (called Velour up to 0.2.1). The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.6.0] - 2026-11-24
+
+### HDR on Windows
+- With "Use HDR" on in Windows, HDR videos play in real HDR with their full
+  brightness and colors. Turn it off in the settings to always get SDR
+- Switching Windows HDR on or off while a video plays is picked up right away
+- The media info shows whether a video is shown in HDR
+- HDR videos on SDR screens look better: brighter highlights, less washed-out colors
+
+### Downloads
+- Right-click a movie, episode or song from Plex, Jellyfin or Emby and pick
+  "Download" – or "Download all" on a season, show, album or playlist
+- Velouna downloads the original file, without Plex Pass or the server's own sync
+- Downloaded items play from disk, and your progress still goes to the server.
+  Cards show a small download mark; right-click again to delete the copy
+- An interrupted download continues where it stopped
+
+### Crash reports
+- After a crash, Velouna shows the crash report on the next start and sends it only
+  if you click "Send". It has no identifier and nothing about you
+
 ## [0.5.0] - 2026-11-24
 
 ### Controls that fit what plays
