@@ -314,6 +314,7 @@ impl App {
             (ph::BROADCAST, t!("Netzwerk"), LibLoc::Network, 3),
             (ph::PLAYLIST, "Playlists", LibLoc::Playlists(None), 4),
             (ph::CLOCK_COUNTER_CLOCKWISE, t!("Zuletzt gespielt"), LibLoc::Recent, 5),
+            (ph::DOWNLOAD_SIMPLE, "Downloads", LibLoc::Downloads, 10),
         ] {
             if widgets::menu_item(ui, &t, icon, label, "", sec == s).clicked() {
                 self.lib.go_root(loc);

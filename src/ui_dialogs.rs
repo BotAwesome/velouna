@@ -83,6 +83,8 @@ struct Rows<'a> {
     t: theme::Theme,
     filter: &'a str,
     shown: usize,
+    /// Rows since the last section heading (for the alternating colors).
+    in_section: usize,
 }
 
 impl Rows<'_> {
@@ -94,13 +96,22 @@ impl Rows<'_> {
             }
         }
         self.shown += 1;
-        widgets::setting_row(ui, &self.t, label, info, add);
+        let odd = self.in_section % 2 == 1;
+        self.in_section += 1;
+        widgets::setting_row_striped(ui, &self.t, label, info, odd, add);
     }
-    fn section(&self, ui: &mut Ui, title: &str) {
+    /// A heading with room above it: each section reads as its own block.
+    fn section(&mut self, ui: &mut Ui, title: &str) {
         if self.filter.is_empty() {
-            ui.add_space(10.0);
-            ui.label(RichText::new(title).font(theme::semibold(14.0)).color(self.t.text));
-            ui.add_space(2.0);
+            self.in_section = 0;
+            ui.add_space(if self.shown == 0 { 4.0 } else { 22.0 });
+            ui.horizontal(|ui| {
+                let (r, _) = ui.allocate_exact_size(vec2(3.0, 15.0), Sense::hover());
+                ui.painter().rect_filled(r, CornerRadius::same(2), self.t.accent);
+                ui.add_space(4.0);
+                ui.label(RichText::new(title).font(theme::semibold(14.5)).color(self.t.text));
+            });
+            ui.add_space(6.0);
         }
     }
 }
@@ -339,7 +350,7 @@ impl App {
         let t = self.t;
         let filter = self.settings_search.clone();
         let mut s = self.data.settings.clone();
-        let mut rows = Rows { t, filter: &filter, shown: 0 };
+        let mut rows = Rows { t, filter: &filter, shown: 0, in_section: 0 };
         if filter.is_empty() {
             self.settings_page_ui(ui, page, &mut s, &mut rows);
         } else {
@@ -1126,6 +1137,20 @@ impl App {
                         self.plex.images.clear();
                         let _ = std::fs::remove_dir_all(crate::config::cache_dir().join("plex_img"));
                     }
+                });
+                r.section(ui, "Downloads");
+                r.row(ui, t!("Download-Ordner"), t!("Wohin „Herunterladen“ die Dateien legt."), |ui| {
+                    if ui.button(t!("Ändern…")).clicked() {
+                        self.pick(Pick::DownloadDir);
+                        s.download_dir = self.data.settings.download_dir.clone();
+                    }
+                    ui.label(RichText::new(s.download_dir.to_string_lossy()).size(12.0).color(t.text_dim));
+                });
+                r.row(ui, t!("Gleichzeitige Teile"), t!("Große Dateien laden in mehreren Teilen zugleich. Hilft bei Servern über das Internet, im Heimnetz kaum. 1 = aus."), |ui| {
+                    let mut n = s.download_parts as f64;
+                    widgets::value_box(ui, &t, &format!("{}", n as u32), 36.0);
+                    widgets::slider(ui, &t, &mut n, 1.0, 8.0, 140.0);
+                    s.download_parts = (n.round() as u32).clamp(1, 8);
                 });
             }
             SettingsPage::Network => {

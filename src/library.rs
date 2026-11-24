@@ -35,6 +35,8 @@ pub enum LibLoc {
     Radio(Option<(String, String)>),
     /// A page of a plugin source.
     Ext(ExtLoc),
+    /// The download manager.
+    Downloads,
 }
 
 /// A place in a plugin source: the page `path` of `source` ("" = its
@@ -86,6 +88,7 @@ impl LibLoc {
             LibLoc::Tv(_) => 7,
             LibLoc::Radio(_) => 8,
             LibLoc::Ext(_) => 9,
+            LibLoc::Downloads => 10,
         }
     }
 }
@@ -255,6 +258,7 @@ impl LibraryState {
             LibLoc::Playlists(None) => "Playlists".into(),
             LibLoc::Playlists(Some(i)) => data.playlists.get(*i).map(|p| p.name.clone()).unwrap_or_default(),
             LibLoc::Recent => t!("Zuletzt gespielt").into(),
+            LibLoc::Downloads => "Downloads".into(),
             LibLoc::Plex(p) => match p {
                 PlexLoc::Home => plex_root(data),
                 PlexLoc::Section { title, .. } | PlexLoc::Item { title, .. } | PlexLoc::Hub { title, .. } => title.clone(),

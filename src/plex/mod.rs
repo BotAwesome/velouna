@@ -838,6 +838,10 @@ impl Plex {
         let s = self.server.as_ref()?;
         Some(format!("{}{}", s.base, part_key))
     }
+    /// Name of the server shown (for download rows).
+    pub fn server_name(&self) -> String {
+        self.server.as_ref().map(|s| s.name.clone()).unwrap_or_default()
+    }
     /// Connection of the server shown, for registering streams.
     pub fn conn(&self) -> Option<Conn> {
         self.server.as_ref().map(|s| s.conn())

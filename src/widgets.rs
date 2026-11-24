@@ -472,6 +472,37 @@ pub fn setting_row(ui: &mut Ui, t: &Theme, label: &str, info: &str, add: impl Fn
     });
 }
 
+/// A settings row on a band of its own; `odd` rows are a shade darker, so
+/// long lists keep label and control together.
+pub fn setting_row_striped(ui: &mut Ui, t: &Theme, label: &str, info: &str, odd: bool, add: impl FnOnce(&mut Ui)) {
+    let fill = if odd { t.hover.gamma_multiply(0.35) } else { t.hover.gamma_multiply(0.8) };
+    let w = ui.available_width();
+    egui::Frame::new().fill(fill).corner_radius(CornerRadius::same(theme::R + 2)).inner_margin(egui::Margin::symmetric(12, 3)).show(ui, |ui| {
+        ui.set_width(w - 24.0);
+        if crate::mobile::touch() {
+            ui.add_space(4.0);
+            ui.label(egui::RichText::new(label).color(t.text).size(14.5));
+            if !info.is_empty() {
+                ui.label(egui::RichText::new(info).color(t.text_faint).size(12.0));
+            }
+            let w = ui.available_width();
+            ui.allocate_ui_with_layout(vec2(w, 36.0), egui::Layout::right_to_left(egui::Align::Center).with_main_wrap(true), add);
+            ui.add_space(2.0);
+        } else {
+            ui.horizontal(|ui| {
+                ui.set_min_height(34.0);
+                ui.label(egui::RichText::new(label).color(t.text));
+                if !info.is_empty() {
+                    let r = ui.label(egui::RichText::new(egui_phosphor::regular::INFO).color(t.text_faint).size(14.0));
+                    r.on_hover_text(info);
+                }
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| add(ui));
+            });
+        }
+    });
+    ui.add_space(2.0);
+}
+
 pub fn separator(ui: &mut Ui, t: &Theme) {
     // as wide as the rows above, not the whole popup: a line that takes all
     // the room would keep a menu as wide as it ever was

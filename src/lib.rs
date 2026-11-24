@@ -31,6 +31,7 @@ mod plex;
 mod radio;
 mod theme;
 mod ui_dialogs;
+mod ui_downloads;
 mod ui_library;
 mod ui_mobile;
 mod ui_touch_editor;

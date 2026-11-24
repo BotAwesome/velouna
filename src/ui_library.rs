@@ -247,7 +247,7 @@ impl App {
         let loc = self.lib.loc.clone();
         let show_hidden = self.data.settings.show_hidden;
         let mut v = match &loc {
-            LibLoc::Home | LibLoc::Plex(_) | LibLoc::Ext(_) => vec![],
+            LibLoc::Home | LibLoc::Plex(_) | LibLoc::Ext(_) | LibLoc::Downloads => vec![],
             LibLoc::Videos(None) => self
                 .data
                 .settings
@@ -1139,6 +1139,11 @@ impl App {
                 self.plex_page(ui, p, true);
                 return;
             }
+            if self.lib.loc == LibLoc::Downloads {
+                self.header_nav(ui, true);
+                self.downloads_page(ui, true);
+                return;
+            }
             self.header_nav(ui, true);
             let entries = self.entries();
             let mut click = None;
@@ -1526,6 +1531,16 @@ impl App {
             } else {
                 self.ext_page(ui, e, touch);
             }
+        } else if self.lib.loc == LibLoc::Downloads {
+            if !touch {
+                self.header_nav(ui, false);
+                ui.add_space(4.0);
+            }
+            if mini {
+                ui.scope_builder(egui::UiBuilder::new().max_rect(below_cursor(ui, 4.0)), |ui| self.downloads_page(ui, touch));
+            } else {
+                self.downloads_page(ui, touch);
+            }
         } else if let LibLoc::Plex(p) = self.lib.loc.clone() {
             if self.plex.ready() && !touch {
                 self.header_nav(ui, false);
@@ -1655,6 +1670,13 @@ impl App {
                 }
                 if widgets::icon_text_button(ui, &t, ph::CLIPBOARD, t!("Aus Zwischenablage")).clicked() {
                     self.open_clipboard();
+                }
+                if self.plex.downloads.any() {
+                    let n = self.plex.downloads.running();
+                    let label = if n > 0 { tf!("Downloads ({n})") } else { "Downloads".to_string() };
+                    if widgets::icon_text_button(ui, &t, ph::DOWNLOAD_SIMPLE, &label).clicked() {
+                        self.lib.go(LibLoc::Downloads);
+                    }
                 }
             });
             ui.add_space(22.0);

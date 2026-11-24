@@ -407,6 +407,9 @@ pub struct Settings {
     pub screenshot_dir: PathBuf,
     pub screenshot_format: String,
     pub record_dir: PathBuf,
+    /// Where server downloads go, and in how many parallel ranges they load.
+    pub download_dir: PathBuf,
+    pub download_parts: u32,
     // misc
     pub layout: ControlLayout,
     pub sidebar_width: f32,
@@ -571,6 +574,8 @@ impl Default for Settings {
             screenshot_dir: pictures.join("Velouna"),
             screenshot_format: "png".into(),
             record_dir: videos.join("Velouna"),
+            download_dir: crate::plex::download::default_dir(),
+            download_parts: 4,
             layout: ControlLayout::default(),
             sidebar_width: 340.0,
             compact_lib_width: 340.0,
@@ -907,6 +912,9 @@ impl Data {
             }
             if !on_storage(&s.record_dir) {
                 s.record_dir = android_storage("Movies").join("Velouna");
+            }
+            if !on_storage(&s.download_dir) {
+                s.download_dir = android_storage("Download").join("Velouna");
             }
         }
         // The old default accent was VLC-like orange; Velouna's is velvet red.

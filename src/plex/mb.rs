@@ -997,29 +997,37 @@ mod tests {
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
         };
+        let k = crate::plex::download::key("s", &track.rating_key);
         // Cancel while running: no file, no entry, no message.
-        assert!(dl.start("s", &track, &c, dir.clone()));
-        wait("progress", &|| matches!(dl.state("s", &track.rating_key), DlState::Running(_)));
-        dl.cancel("s", &track.rating_key);
+        assert!(dl.start("s", "Demo", &track, &c, dir.clone(), 4));
+        wait("progress", &|| matches!(dl.state("s", &track.rating_key), DlState::Running(f) if f > 0.0));
+        dl.cancel(&k);
         wait("cancel", &|| matches!(dl.state("s", &track.rating_key), DlState::None));
         assert!(dl.take_news().is_empty());
-        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "partial file left behind");
-        // Resume: a .part with the first bytes is continued via Range.
-        let head = http_get_bytes(&c.with_token(&track.first_part().unwrap().key), 100_000);
-        let tmp = dir.join(format!(".{}.part", format!("s|{}", track.rating_key).replace(['|', '/', '\\', ':'], "_")));
-        std::fs::write(&tmp, &head).unwrap();
-        assert!(dl.start("s", &track, &c, dir.clone()));
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "partial files left behind");
+        // Pause in 4 parts, then continue: the parts keep what they had.
+        assert!(dl.start("s", "Demo", &track, &c, dir.clone(), 4));
+        wait("progress", &|| matches!(dl.state("s", &track.rating_key), DlState::Running(f) if f > 0.0));
+        dl.pause(&k);
+        wait("pause", &|| matches!(dl.state("s", &track.rating_key), DlState::Paused(_)));
+        let parts: Vec<_> = std::fs::read_dir(&dir).unwrap().filter_map(|e| e.ok()).map(|e| e.file_name().to_string_lossy().to_string()).collect();
+        println!("paused with {parts:?}");
+        assert!(parts.iter().filter(|p| p.contains(".part")).count() == 4, "4 part files");
+        assert!(dl.interrupted_of("s").is_empty(), "user pause must not auto-resume");
+        assert!(dl.resume(&k, &c));
         wait("done", &|| matches!(dl.state("s", &track.rating_key), DlState::Done));
         let news = dl.take_news();
-        println!("news {news:?}");
-        assert!(news[0].1.is_ok());
+        assert!(news[0].1.is_ok(), "{news:?}");
         let local = dl.local("s", &track.rating_key).expect("local");
         let full = http_get_bytes(&c.with_token(&track.first_part().unwrap().key), usize::MAX);
         let got = std::fs::read(&local).unwrap();
         println!("file {} ({} bytes, server {})", local.display(), got.len(), full.len());
         assert_eq!(got.len(), full.len());
         assert!(got == full, "content differs");
-        dl.delete("s", &track.rating_key);
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 1, "only the finished file");
+        let row = dl.rows().into_iter().find(|r| r.key == k).unwrap();
+        assert_eq!(row.total, full.len() as u64);
+        dl.delete(&k);
         assert!(!local.exists());
     }
 

@@ -330,6 +330,12 @@ impl App {
             ui.close();
             self.view = View::Library;
         }
+        let n = self.plex.downloads.running();
+        if widgets::menu_item(ui, &t, ph::DOWNLOAD_SIMPLE, "Downloads", &if n > 0 { n.to_string() } else { String::new() }, false).clicked() {
+            ui.close();
+            self.view = View::Library;
+            self.lib.go(crate::library::LibLoc::Downloads);
+        }
         if widgets::menu_item(ui, &t, ph::QUEUE, t!("Warteschlange"), &self.shortcut(Action::Queue), self.right == RightPanel::Queue).clicked() {
             ui.close();
             self.right = if self.right == RightPanel::Queue { RightPanel::None } else { RightPanel::Queue };

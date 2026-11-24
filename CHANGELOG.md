@@ -3,6 +3,24 @@
 All notable changes to Velouna (called Velour up to 0.2.1). The newest version is at the top; each
 section becomes the text of its GitHub release and the "What's new" dialog.
 
+## [0.6.1] - 2026-11-24
+
+### Download manager
+- A new Downloads page shows what is loading, paused and done: progress, speed and
+  time left, pause, resume and cancel, "Pause all" and "Resume all". Open it from the
+  start page or the main menu
+- Finished downloads play straight from the list, show in the file manager, or get
+  deleted (two clicks, since the file goes too). Files deleted outside Velouna are marked
+- Large files load in several parts at once, which helps with servers over the internet.
+  Choose how many in Settings → Media servers, together with the download folder
+- Downloads cut off by closing Velouna or losing the connection continue by themselves
+  once the server is back; ones you paused stay paused
+- Android: downloads now go to the visible Download/Velouna folder
+
+### Settings
+- Sections are clearly apart, and rows alternate in color, so label and switch stay
+  together on long pages
+
 ## [0.6.0] - 2026-11-24
 
 ### HDR on Windows

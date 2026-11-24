@@ -414,6 +414,7 @@ impl App {
         if self.plex.poll(ctx, &mut self.data.plex, local_only) {
             self.mark_dirty();
         }
+        self.plex_dl_poll();
         if let Some(req) = self.plex.pending_play.clone() {
             if self.plex_execute(&req) {
                 self.plex.pending_play = None;
@@ -604,13 +605,19 @@ impl App {
     fn plex_dl_poll(&mut self) {
         let Some(server) = self.plex.active_id() else { return };
         let Some(conn) = self.plex.conn() else { return };
-        let dir = plex::download::default_dir();
+        let dir = self.data.settings.download_dir.clone();
+        let parts = self.data.settings.download_parts;
+        let server_name = self.plex.server_name();
+        // Downloads cut off by closing Velouna or losing the server go on.
+        for k in self.plex.downloads.interrupted_of(&server) {
+            self.plex.downloads.resume(&k, &conn);
+        }
         for path in std::mem::take(&mut self.px.dl_lists) {
             match self.plex.items(&path) {
                 St::Ready(list) => {
                     for it in list.iter().filter(|i| i.kind.playable()) {
                         if it.first_part().is_some() {
-                            self.plex.downloads.start(&server, it, &conn, dir.clone());
+                            self.plex.downloads.start(&server, &server_name, it, &conn, dir.clone(), parts);
                         } else {
                             self.px.dl_meta.push(it.rating_key.clone());
                         }
@@ -623,7 +630,7 @@ impl App {
         for key in std::mem::take(&mut self.px.dl_meta) {
             match self.plex.meta(&key) {
                 St::Ready(it) => {
-                    if !self.plex.downloads.start(&server, &it, &conn, dir.clone()) && it.first_part().is_none() {
+                    if !self.plex.downloads.start(&server, &server_name, &it, &conn, dir.clone(), parts) && it.first_part().is_none() {
                         self.osd(t!("Nichts Abspielbares gefunden"));
                     }
                 }
@@ -655,7 +662,6 @@ impl App {
     }
 
     fn plex_handle(&mut self, acts: Vec<Act>, section: Option<(String, String)>) {
-        self.plex_dl_poll();
         for a in acts {
             match a {
                 Act::Go(l) => self.lib.go(l),
@@ -693,12 +699,12 @@ impl App {
                 Act::Download(item) => self.plex_download(item),
                 Act::CancelDownload(item) => {
                     if let Some(s) = self.plex.active_id() {
-                        self.plex.downloads.cancel(&s, &item.rating_key);
+                        self.plex.downloads.cancel(&plex::download::key(&s, &item.rating_key));
                     }
                 }
                 Act::DeleteDownload(item) => {
                     if let Some(s) = self.plex.active_id() {
-                        self.plex.downloads.delete(&s, &item.rating_key);
+                        self.plex.downloads.delete(&plex::download::key(&s, &item.rating_key));
                         self.osd(t!("Download gelöscht"));
                     }
                 }
@@ -770,6 +776,7 @@ impl App {
             DlState::None => (ph::DOWNLOAD_SIMPLE, if group { t!("Alle herunterladen").to_string() } else { t!("Herunterladen").to_string() }, Act::Download(item.clone())),
             DlState::Queued => (ph::X, t!("Download abbrechen (wartet)").to_string(), Act::CancelDownload(item.clone())),
             DlState::Running(p) => (ph::X, tf!("Download abbrechen ({} %)", (p * 100.0) as u32), Act::CancelDownload(item.clone())),
+            DlState::Paused(p) => (ph::DOWNLOAD_SIMPLE, tf!("Download fortsetzen ({} %)", (p * 100.0) as u32), Act::Download(item.clone())),
             DlState::Done => (ph::TRASH, t!("Download löschen").to_string(), Act::DeleteDownload(item.clone())),
         };
         if widgets::menu_item(ui, &t, icon, &label, "", false).clicked() {

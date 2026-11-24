@@ -25,6 +25,7 @@ pub enum Pick {
     LibraryFolder { music: bool, show: bool },
     ScreenshotDir,
     RecordDir,
+    DownloadDir,
     /// New playlist with these items so far.
     PlaylistFiles(Vec<String>),
     /// A `.velounaplugin` file to install.
@@ -81,7 +82,7 @@ impl App {
             use crate::platform::android::{PickMode, pick};
             match &p {
                 Pick::OpenFiles | Pick::QueueFiles | Pick::PlaylistFiles(_) => pick(PickMode::Media, true),
-                Pick::OpenFolder | Pick::QueueFolder | Pick::LibraryFolder { .. } | Pick::ScreenshotDir | Pick::RecordDir => pick(PickMode::Folder, false),
+                Pick::OpenFolder | Pick::QueueFolder | Pick::LibraryFolder { .. } | Pick::ScreenshotDir | Pick::RecordDir | Pick::DownloadDir => pick(PickMode::Folder, false),
                 // The subtitle mode is the picker for any single file.
                 Pick::Subtitle | Pick::SubtitlesFor(SubScope::File) | Pick::Plugin => pick(PickMode::Subtitles, false),
                 Pick::SubtitlesFor(_) => pick(PickMode::Subtitles, true),
@@ -120,7 +121,7 @@ impl App {
             }
             Pick::OpenFolder => one(rfd::FileDialog::new().set_title(t!("Ordner öffnen")).pick_folder()),
             Pick::QueueFiles => rfd::FileDialog::new().add_filter(t!("Medien"), &media_ext).add_filter(t!("Alle Dateien"), &["*"]).pick_files().unwrap_or_default(),
-            Pick::QueueFolder | Pick::ScreenshotDir | Pick::RecordDir => one(rfd::FileDialog::new().pick_folder()),
+            Pick::QueueFolder | Pick::ScreenshotDir | Pick::RecordDir | Pick::DownloadDir => one(rfd::FileDialog::new().pick_folder()),
             Pick::Subtitle | Pick::SubtitlesFor(_) => {
                 let mut d = rfd::FileDialog::new().add_filter(t!("Untertitel"), media::SUB_EXT).add_filter(t!("Alle Dateien"), &["*"]);
                 if let Some(dir) = self.current_folder() {
@@ -270,6 +271,10 @@ impl App {
                 } else {
                     self.data.settings.record_dir = d;
                 }
+                self.mark_dirty();
+            }
+            Pick::DownloadDir => {
+                self.data.settings.download_dir = std::path::PathBuf::from(&first);
                 self.mark_dirty();
             }
             Pick::PlaylistFiles(mut items) => {
