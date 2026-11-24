@@ -103,6 +103,10 @@ pub struct PlexUi {
     pub mb_form: Option<MbForm>,
     /// Show the Plex sign-in page although another server is connected.
     pub plex_connect: bool,
+    /// Downloads waiting for data: items without file info (rating keys) and
+    /// seasons/albums whose children are still loading (list paths).
+    dl_meta: Vec<String>,
+    dl_lists: Vec<String>,
 }
 
 #[derive(Clone, Default)]
@@ -128,6 +132,9 @@ enum Act {
     Watched(Item, bool),
     ToShow(Item),
     Season(String, String),
+    Download(Item),
+    CancelDownload(Item),
+    DeleteDownload(Item),
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -507,7 +514,11 @@ impl App {
         let mut entries: Vec<(String, String)> = Vec::new();
         for (n, it) in list.iter().enumerate() {
             let Some(part) = it.first_part() else { continue };
-            let Some(url) = self.plex.stream_url(&part.key) else { continue };
+            let Some(mut url) = self.plex.stream_url(&part.key) else { continue };
+            // A downloaded copy plays from disk; progress still goes to the server.
+            if let Some(local) = self.plex.active_id().and_then(|s| self.plex.downloads.local(&s, &it.rating_key)) {
+                url = local.to_string_lossy().into_owned();
+            }
             plex::register(
                 &url,
                 plex::Remote {
@@ -589,7 +600,62 @@ impl App {
         true
     }
 
+    /// Starts what waits for data, and announces finished downloads.
+    fn plex_dl_poll(&mut self) {
+        let Some(server) = self.plex.active_id() else { return };
+        let Some(conn) = self.plex.conn() else { return };
+        let dir = plex::download::default_dir();
+        for path in std::mem::take(&mut self.px.dl_lists) {
+            match self.plex.items(&path) {
+                St::Ready(list) => {
+                    for it in list.iter().filter(|i| i.kind.playable()) {
+                        if it.first_part().is_some() {
+                            self.plex.downloads.start(&server, it, &conn, dir.clone());
+                        } else {
+                            self.px.dl_meta.push(it.rating_key.clone());
+                        }
+                    }
+                }
+                St::Loading => self.px.dl_lists.push(path),
+                St::Failed(e) => self.osd(e),
+            }
+        }
+        for key in std::mem::take(&mut self.px.dl_meta) {
+            match self.plex.meta(&key) {
+                St::Ready(it) => {
+                    if !self.plex.downloads.start(&server, &it, &conn, dir.clone()) && it.first_part().is_none() {
+                        self.osd(t!("Nichts Abspielbares gefunden"));
+                    }
+                }
+                St::Loading => self.px.dl_meta.push(key),
+                St::Failed(e) => self.osd(e),
+            }
+        }
+        for (title, res) in self.plex.downloads.take_news() {
+            match res {
+                Ok(()) => self.osd(tf!("Heruntergeladen: {title}")),
+                Err(e) => self.osd(tf!("Download fehlgeschlagen: {title} ({e})")),
+            }
+        }
+    }
+
+    fn plex_download(&mut self, item: Item) {
+        if item.kind.playable() {
+            self.px.dl_meta.push(item.rating_key.clone());
+        } else {
+            let path = match item.kind {
+                Kind::Collection => format!("/library/collections/{}/children", item.rating_key),
+                Kind::Playlist => format!("/playlists/{}/items", item.rating_key),
+                Kind::Show | Kind::Artist => format!("/library/metadata/{}/allLeaves", item.rating_key),
+                _ => format!("/library/metadata/{}/children", item.rating_key),
+            };
+            self.px.dl_lists.push(path);
+        }
+        self.osd(t!("Download gestartet"));
+    }
+
     fn plex_handle(&mut self, acts: Vec<Act>, section: Option<(String, String)>) {
+        self.plex_dl_poll();
         for a in acts {
             match a {
                 Act::Go(l) => self.lib.go(l),
@@ -623,6 +689,18 @@ impl App {
                 }
                 Act::Season(show, season) => {
                     self.px.season.insert(show, season);
+                }
+                Act::Download(item) => self.plex_download(item),
+                Act::CancelDownload(item) => {
+                    if let Some(s) = self.plex.active_id() {
+                        self.plex.downloads.cancel(&s, &item.rating_key);
+                    }
+                }
+                Act::DeleteDownload(item) => {
+                    if let Some(s) = self.plex.active_id() {
+                        self.plex.downloads.delete(&s, &item.rating_key);
+                        self.osd(t!("Download gelöscht"));
+                    }
                 }
             }
         }
@@ -668,12 +746,34 @@ impl App {
                 ui.close();
             }
         }
+        self.download_menu(ui, item, acts);
         if matches!(item.kind, Kind::Episode | Kind::Season) && widgets::menu_item(ui, &t, ph::TELEVISION_SIMPLE, t!("Zur Serie"), "", false).clicked() {
             acts.push(Act::ToShow(item.clone()));
             ui.close();
         }
         if matches!(item.kind, Kind::Movie | Kind::Episode) && widgets::menu_item(ui, &t, ph::INFO, "Details", "", false).clicked() {
             acts.push(Act::Go(LibLoc::Plex(PlexLoc::Item { key: item.rating_key.clone(), title: item.title.clone(), section: None })));
+            ui.close();
+        }
+    }
+
+    fn download_menu(&self, ui: &mut Ui, item: &Item, acts: &mut Vec<Act>) {
+        use plex::download::DlState;
+        let t = self.t;
+        let group = matches!(item.kind, Kind::Show | Kind::Season | Kind::Album | Kind::Playlist | Kind::Collection | Kind::Artist);
+        if !item.kind.playable() && !group {
+            return;
+        }
+        let Some(server) = self.plex.active_id() else { return };
+        let state = if group { DlState::None } else { self.plex.downloads.state(&server, &item.rating_key) };
+        let (icon, label, act) = match state {
+            DlState::None => (ph::DOWNLOAD_SIMPLE, if group { t!("Alle herunterladen").to_string() } else { t!("Herunterladen").to_string() }, Act::Download(item.clone())),
+            DlState::Queued => (ph::X, t!("Download abbrechen (wartet)").to_string(), Act::CancelDownload(item.clone())),
+            DlState::Running(p) => (ph::X, tf!("Download abbrechen ({} %)", (p * 100.0) as u32), Act::CancelDownload(item.clone())),
+            DlState::Done => (ph::TRASH, t!("Download löschen").to_string(), Act::DeleteDownload(item.clone())),
+        };
+        if widgets::menu_item(ui, &t, icon, &label, "", false).clicked() {
+            acts.push(act);
             ui.close();
         }
     }
@@ -722,6 +822,14 @@ impl App {
             ui.painter().rect_filled(bar, CornerRadius::same(2), Color32::from_black_alpha(150));
             let f = Rect::from_min_max(bar.min, pos2(bar.left() + bar.width() * p, bar.bottom()));
             ui.painter().rect_filled(f, CornerRadius::same(2), t.accent);
+        }
+        if item.kind.playable()
+            && let Some(s) = self.plex.active_id()
+            && matches!(self.plex.downloads.state(&s, &item.rating_key), plex::download::DlState::Done)
+        {
+            let c = pos2(img.left() + 14.0, img.top() + 14.0);
+            ui.painter().circle_filled(c, 11.0, Color32::from_black_alpha(170));
+            ui.painter().text(c, Align2::CENTER_CENTER, ph::DOWNLOAD_SIMPLE, theme::icon(12.0), Color32::WHITE);
         }
         if hovered {
             ui.painter().rect_stroke(img, cr, Stroke::new(1.5, t.accent), StrokeKind::Inside);

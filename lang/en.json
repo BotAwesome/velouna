@@ -1184,5 +1184,15 @@
   "HDR-Ausgabe": "HDR output",
   "HDR-Videos werden in HDR gezeigt, wenn in Windows „HDR verwenden“ an ist. Aus: immer in SDR umgerechnet.": "HDR videos are shown in HDR when “Use HDR” is on in Windows. Off: always converted to SDR.",
   "ausgegeben als HDR": "shown in HDR",
-  "umgerechnet in SDR": "converted to SDR"
+  "umgerechnet in SDR": "converted to SDR",
+  "Heruntergeladen: {title}": "Downloaded: {title}",
+  "Download fehlgeschlagen: {title} ({e})": "Download failed: {title} ({e})",
+  "Download gestartet": "Download started",
+  "Download gelöscht": "Download deleted",
+  "Alle herunterladen": "Download all",
+  "Herunterladen": "Download",
+  "Download abbrechen (wartet)": "Cancel download (waiting)",
+  "Download abbrechen ({} %)": "Cancel download ({} %)",
+  "Download löschen": "Delete download",
+  "Verbindung abgebrochen": "Connection lost"
 }

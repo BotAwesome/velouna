@@ -969,6 +969,67 @@ mod tests {
         assert_eq!(url_decode("a%2"), "a%2");
     }
 
+    /// Download of a real track: `VELOUNA_DATA_DIR=<scratch> VELOUNA_MB_URL=… cargo test live_download -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn live_download() {
+        use crate::plex::download::{DlState, Downloads};
+        let url = std::env::var("VELOUNA_MB_URL").expect("VELOUNA_MB_URL");
+        let user = std::env::var("VELOUNA_MB_USER").unwrap_or_default();
+        let pw = std::env::var("VELOUNA_MB_PASS").unwrap_or_default();
+        let http = Http::new("velouna-test".into());
+        let (srv, _) = login(&http, &url, &user, &pw, "velouna-test-device").expect("login");
+        let c = Conn { base: srv.connections[0].uri.clone(), token: srv.token, backend: srv.backend, user_id: srv.user_id, device_id: srv.device_id };
+        let secs = connect(&http, &c).expect("views");
+        let music = secs.iter().find(|s| s.kind == "artist").expect("music section");
+        let (artists, _) = items(&http, &c, &format!("/library/sections/{}/all?type=8&X-Plex-Container-Start=0&X-Plex-Container-Size=5", music.key)).expect("artists");
+        let (tracks, _) = items(&http, &c, &format!("/library/metadata/{}/allLeaves", artists[0].rating_key)).expect("tracks");
+        let track = tracks.iter().find(|t| t.first_part().is_some()).expect("track with file");
+        let track = if track.first_part().unwrap().size > 0 { track.clone() } else { meta(&http, &c, &track.rating_key).expect("meta") };
+        println!("track {} part {:?} size {}", track.title, track.first_part().map(|p| p.key.clone()), track.first_part().unwrap().size);
+        let dir = std::env::temp_dir().join("velouna-dl-test");
+        let _ = std::fs::remove_dir_all(&dir);
+        let dl = Downloads::new(&eframe::egui::Context::default());
+        let wait = |what: &str, f: &dyn Fn() -> bool| {
+            let t = std::time::Instant::now();
+            while !f() {
+                assert!(t.elapsed().as_secs() < 120, "timeout: {what}");
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+        };
+        // Cancel while running: no file, no entry, no message.
+        assert!(dl.start("s", &track, &c, dir.clone()));
+        wait("progress", &|| matches!(dl.state("s", &track.rating_key), DlState::Running(_)));
+        dl.cancel("s", &track.rating_key);
+        wait("cancel", &|| matches!(dl.state("s", &track.rating_key), DlState::None));
+        assert!(dl.take_news().is_empty());
+        assert_eq!(std::fs::read_dir(&dir).unwrap().count(), 0, "partial file left behind");
+        // Resume: a .part with the first bytes is continued via Range.
+        let head = http_get_bytes(&c.with_token(&track.first_part().unwrap().key), 100_000);
+        let tmp = dir.join(format!(".{}.part", format!("s|{}", track.rating_key).replace(['|', '/', '\\', ':'], "_")));
+        std::fs::write(&tmp, &head).unwrap();
+        assert!(dl.start("s", &track, &c, dir.clone()));
+        wait("done", &|| matches!(dl.state("s", &track.rating_key), DlState::Done));
+        let news = dl.take_news();
+        println!("news {news:?}");
+        assert!(news[0].1.is_ok());
+        let local = dl.local("s", &track.rating_key).expect("local");
+        let full = http_get_bytes(&c.with_token(&track.first_part().unwrap().key), usize::MAX);
+        let got = std::fs::read(&local).unwrap();
+        println!("file {} ({} bytes, server {})", local.display(), got.len(), full.len());
+        assert_eq!(got.len(), full.len());
+        assert!(got == full, "content differs");
+        dl.delete("s", &track.rating_key);
+        assert!(!local.exists());
+    }
+
+    fn http_get_bytes(url: &str, max: usize) -> Vec<u8> {
+        use std::io::Read;
+        let mut v = vec![];
+        ureq::get(url).call().unwrap().into_reader().take(max as u64).read_to_end(&mut v).unwrap();
+        v
+    }
+
     /// Against a real server: `VELOUNA_MB_URL=… VELOUNA_MB_USER=… cargo test live_server -- --ignored --nocapture`
     #[test]
     #[ignore]

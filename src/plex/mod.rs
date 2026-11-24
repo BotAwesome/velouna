@@ -3,6 +3,7 @@
 
 pub mod api;
 pub mod bif;
+pub mod download;
 pub mod images;
 pub mod mb;
 pub mod model;
@@ -285,6 +286,8 @@ pub struct Plex {
     pub server: Option<ActiveServer>,
     pub sections: Vec<Section>,
     pub images: images::Images,
+    /// Offline copies (right-click > Herunterladen).
+    pub downloads: download::Downloads,
     pub pending_play: Option<PlayReq>,
     pub token_store_failed: bool,
     pub mb_login: MbLogin,
@@ -337,6 +340,7 @@ impl Plex {
         let images = images::Images::new(ctx.clone(), http.clone());
         let token = load_token();
         let mut p = Plex {
+            downloads: download::Downloads::new(ctx),
             http,
             status: Status::SignedOut,
             user: None,
