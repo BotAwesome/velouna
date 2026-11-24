@@ -2235,6 +2235,11 @@ impl App {
         // While the next file loads the curve is still unknown: stay as is.
         let loading = p.st.transfer.is_empty() && p.st.has_media();
         let want = if loading && shown { self.hdr_on } else { shown && p.st.is_hdr() && crate::platform::hdr::screen_hdr(main) };
+        // Windows HDR can be switched while playing, and in HDR mode nothing
+        // else may repaint: look again every two seconds.
+        if shown && (p.st.is_hdr() || loading) {
+            ctx.request_repaint_after(Duration::from_secs(2));
+        }
         if want != self.hdr_on {
             let m = &p.mpv;
             if want {
