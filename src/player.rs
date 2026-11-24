@@ -142,6 +142,8 @@ pub struct PlayerState {
     pub ab_a: Option<f64>,
     pub ab_b: Option<f64>,
     pub hwdec: String,
+    /// Transfer curve of the video ("pq", "hlg" = HDR).
+    pub transfer: String,
     pub fps: f64,
     pub video_codec: String,
     pub audio_codec: String,
@@ -198,6 +200,7 @@ impl Default for PlayerState {
             ab_a: None,
             ab_b: None,
             hwdec: String::new(),
+            transfer: String::new(),
             fps: 0.0,
             video_codec: String::new(),
             audio_codec: String::new(),
@@ -359,6 +362,11 @@ impl PlayerState {
             "video-params" => {
                 self.video_w = v.i64_of("dw").or(v.i64_of("w")).unwrap_or(0);
                 self.video_h = v.i64_of("dh").or(v.i64_of("h")).unwrap_or(0);
+                let t = v.str_of("gamma").unwrap_or_default();
+                if t != self.transfer && !t.is_empty() {
+                    log::info!("video transfer: {} ({})", t, v.str_of("primaries").unwrap_or_default());
+                }
+                self.transfer = t;
             }
             "metadata" => {
                 self.metadata = match v {

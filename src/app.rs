@@ -367,7 +367,15 @@ fn init_mpv(s: &Settings) -> Result<Arc<Mpv>, String> {
         ("video-sync", if s.video_sync_display { "display-resample".into() } else { "audio".into() }),
         ("sub-font", s.sub_font.clone()),
         ("speed", format!("{}", s.default_speed)),
+        // HDR videos converted for SDR screens: pick the curve per scene, keep
+        // black black. Measuring the peak is too heavy for phone/ARM GPUs.
+        ("tone-mapping", "auto".into()),
+        ("hdr-compute-peak", if cfg!(target_arch = "aarch64") { "no".into() } else { "auto".into() }),
+        ("target-contrast", "inf".into()),
     ];
+    // Media keys are handled by the Windows media overlay already.
+    #[cfg(windows)]
+    opts.push(("input-media-keys", "no".into()));
     // Linux packages bring their own yt-dlp next to the executable.
     #[cfg(target_os = "linux")]
     if let Some(y) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("yt-dlp"))).filter(|p| p.is_file()) {
